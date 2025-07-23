@@ -1,0 +1,26 @@
+FROM node:18-alpine
+
+# 设置工作目录
+WORKDIR /app
+
+# 安装 ts-node 和依赖
+RUN npm install -g ts-node pnpm nodemon
+
+# 复制 package.json 和 pnpm-lock.yaml
+COPY package.json pnpm-lock.yaml ./
+COPY nodemon.json ./
+
+# 安装依赖
+RUN pnpm install --frozen-lockfile
+
+# 复制源代码 (注意：在开发模式中，这些文件会被卷挂载覆盖)
+COPY src/ ./src/
+COPY config/ ./config/
+COPY tsconfig.json .
+COPY .env* ./
+
+# 暴露端口
+EXPOSE 3010
+
+# 启动命令 - 开发模式下使用 nodemon 监控文件变化
+CMD ["pnpm", "run", "dev"] 

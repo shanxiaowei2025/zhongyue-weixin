@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: weixin-monitor
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # 使用已有的MySQL实例的配置
+      - DB_HOST=${DB_HOST:-your_mysql_host}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_USER=${DB_USER:-root}
+      - DB_PASSWORD=${DB_PASSWORD:-your_password}
+      - DB_NAME=${DB_NAME:-weixinMonitor}
+      # 企业微信配置
+      - CORP_ID=${CORP_ID}
+      - CORP_SECRET=${CORP_SECRET}
+      - AGENT_ID=${AGENT_ID}
+      - TOKEN=${TOKEN}
+      - ENCODING_AES_KEY=${ENCODING_AES_KEY}
+      # 其他配置
+      - PORT=3000
+      - ALERT_THRESHOLDS=${ALERT_THRESHOLDS:-10,30,60,120,180}
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - default
+
+# 如果外部MySQL容器已在特定网络中，可以使用以下配置加入该网络
+networks:
+  default:
+    external:
+      name: ${EXTERNAL_NETWORK:-your_mysql_network}  # 替换为包含MySQL容器的网络名称 
