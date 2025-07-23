@@ -15,7 +15,7 @@ RUN pnpm install --frozen-lockfile
 
 # 复制源代码 (注意：在开发模式中，这些文件会被卷挂载覆盖)
 COPY src/ ./src/
-COPY config/ ./config/
+COPY ./config/
 COPY tsconfig.json .
 COPY .env* ./
 
