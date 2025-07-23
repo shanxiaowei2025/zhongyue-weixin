@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
     container_name: weixin-monitor
     restart: always
     ports:
@@ -22,14 +24,13 @@ services:
       - TOKEN=${TOKEN}
       - ENCODING_AES_KEY=${ENCODING_AES_KEY}
       # 其他配置
-      - PORT=${PORT}
+      - PORT=3010
       - ALERT_THRESHOLDS=${ALERT_THRESHOLDS}
     networks:
       - zhongyue-django_zhongyue-network
     volumes:
       - ./logs:/app/logs
-      - ./src:/app/src  # 添加源代码目录挂载
-      - ./config:/app/config  # 添加配置目录挂载
+      - ./src:/app/src  # 添加源代码目录挂载，已包含src/config
       - ./tsconfig.json:/app/tsconfig.json  # 添加tsconfig.json挂载
       - ./.env:/app/.env  # 添加.env文件挂载
     command: pnpm run dev  # 使用开发模式命令
