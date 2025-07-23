@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Request, Response, Router } from 'express';
 import WeixinCallbackUtil from '../utils/WeixinCallbackUtil';
 import { MonitorService } from '../services/MonitorService';
 import { IMessage } from '../models/Group';
@@ -9,9 +9,27 @@ import { IMessage } from '../models/Group';
  */
 export class WeixinCallbackController {
   private monitorService: MonitorService;
+  private router: Router;
 
   constructor() {
     this.monitorService = new MonitorService();
+    this.router = Router();
+    this.initializeRoutes();
+  }
+
+  /**
+   * 初始化路由
+   */
+  private initializeRoutes(): void {
+    this.router.all('/', (req, res) => this.handleCallback(req, res));
+  }
+
+  /**
+   * 获取路由器
+   * @returns Express路由器
+   */
+  public getRouter(): Router {
+    return this.router;
   }
 
   /**

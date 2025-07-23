@@ -12,11 +12,11 @@ services:
       - "3010:3010"
     environment:
       - NODE_ENV=production
-      - DB_HOST=${DB_HOST:-localhost}
+      - DB_HOST=${DB_HOST:-mysql}
       - DB_PORT=${DB_PORT:-3306}
       - DB_USER=${DB_USER:-root}
-      - DB_PASSWORD=${DB_PASSWORD:-password}
-      - DB_NAME=${DB_NAME:-weixinMonitor}
+      - DB_PASSWORD=${DB_PASSWORD:-zhongyue@12345}
+      - DB_NAME=${DB_NAME:-zhongyueweixin}
       - CORP_ID=${CORP_ID}
       - CORP_SECRET=${CORP_SECRET}
       - AGENT_ID=${AGENT_ID}
@@ -27,8 +27,18 @@ services:
       - PORT=3010
     volumes:
       - ./logs:/app/logs
+      - ./.env:/app/.env
     networks:
       - web_network
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        sleep 10 &&
+        node dist/index.js
+      "
+    # 假设zhongyue-db容器已经存在并运行中
+    external_links:
+      - zhongyue-db:zhongyue-db
 
 networks:
   web_network:

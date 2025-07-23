@@ -15,6 +15,15 @@ export class MonitorService {
     this.weixinService = new WeixinService();
     this.alertThresholds = config.alert.thresholds;
   }
+
+  /**
+   * 静态方法，用于在不实例化的情况下执行检查和发送提醒
+   * 主要用于定时任务
+   */
+  static async checkAndSendAlerts(): Promise<void> {
+    const monitorService = new MonitorService();
+    await monitorService.checkAllGroupsResponse();
+  }
   
   /**
    * 同步所有客户群信息

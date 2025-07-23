@@ -1,27 +1,9 @@
 import { 
-  Model, DataTypes, Sequelize, 
+  Model, DataTypes, 
   InferAttributes, InferCreationAttributes, 
   CreationOptional
 } from 'sequelize';
-import config from '../config/default';
-
-// 创建 Sequelize 实例
-const sequelize = new Sequelize(
-  config.database.database,
-  config.database.username,
-  config.database.password,
-  {
-    host: config.database.host,
-    port: config.database.port,
-    dialect: 'mysql',
-    dialectOptions: {
-      // 使用MySQL native认证插件
-      charset: 'utf8mb4',
-      collate: 'utf8mb4_unicode_ci'
-    },
-    logging: false
-  }
-);
+import sequelize from '../utils/database';
 
 // 消息接口
 export interface IMessage {

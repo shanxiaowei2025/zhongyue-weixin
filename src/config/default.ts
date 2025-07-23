@@ -1,3 +1,6 @@
+console.log("src/config/default.ts 被加载");
+console.log("环境变量 DB_PASSWORD 是否设置:", !!process.env.DB_PASSWORD);
+
 export default {
   corpWeixin: {
     corpId: process.env.CORP_ID || '',
@@ -11,7 +14,7 @@ export default {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '3306'),
     username: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
+    password: process.env.DB_PASSWORD || 'your_password_here', // 提供一个默认密码
     database: process.env.DB_NAME || 'weixinMonitor',
     dialect: 'mysql'
   },
