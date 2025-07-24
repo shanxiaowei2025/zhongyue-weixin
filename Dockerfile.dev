@@ -6,8 +6,7 @@ WORKDIR /app
 # 设置npm镜像和超时配置
 RUN npm config set registry https://registry.npmmirror.com/ && \
     npm config set fetch-timeout 600000 && \
-    npm config set fetch-retries 5 && \
-    npm config set timeout 600000
+    npm config set fetch-retries 5
 
 # 安装 ts-node 和依赖
 RUN npm install -g ts-node pnpm nodemon

@@ -7,8 +7,7 @@ RUN npm install -g pnpm
 # 设置npm镜像和超时配置
 RUN npm config set registry https://registry.npmmirror.com/ && \
     npm config set fetch-timeout 600000 && \
-    npm config set fetch-retries 5 && \
-    npm config set timeout 600000
+    npm config set fetch-retries 5
 
 # 创建应用目录
 WORKDIR /app
@@ -38,8 +37,7 @@ RUN npm install -g pnpm
 # 设置npm镜像和超时配置
 RUN npm config set registry https://registry.npmmirror.com/ && \
     npm config set fetch-timeout 600000 && \
-    npm config set fetch-retries 5 && \
-    npm config set timeout 600000
+    npm config set fetch-retries 5
 
 # 复制package.json和pnpm-lock.yaml
 COPY package.json pnpm-lock.yaml ./
