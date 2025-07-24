@@ -15,6 +15,12 @@ export class WeixinCallbackUtil {
     this.token = config.corpWeixin.token;
     this.encodingAESKey = config.corpWeixin.encodingAESKey;
     this.corpId = config.corpWeixin.corpId;
+    
+    // 添加配置信息日志，便于调试
+    console.log('WeixinCallbackUtil 初始化:');
+    console.log('- Token 是否存在:', !!this.token);
+    console.log('- EncodingAESKey 是否存在:', !!this.encodingAESKey);
+    console.log('- CorpId 是否存在:', !!this.corpId);
   }
 
   /**
@@ -26,11 +32,24 @@ export class WeixinCallbackUtil {
    * @returns boolean 是否通过验证
    */
   verifySignature(signature: string, timestamp: string, nonce: string, echostr?: string): boolean {
+    // 记录输入参数
+    console.log('验证签名输入参数:');
+    console.log('- signature:', signature);
+    console.log('- timestamp:', timestamp);
+    console.log('- nonce:', nonce);
+    console.log('- token:', this.token);
+    
     const arr = [this.token, timestamp, nonce].sort();
     const str = arr.join('');
+    
+    console.log('- 签名前字符串:', str);
+    
     const sha1Sum = crypto.createHash('sha1');
     sha1Sum.update(str);
     const calculatedSignature = sha1Sum.digest('hex');
+    
+    console.log('- 计算得到的签名:', calculatedSignature);
+    console.log('- 是否匹配:', calculatedSignature === signature);
     
     return calculatedSignature === signature;
   }
@@ -113,9 +132,19 @@ export class WeixinCallbackUtil {
    * @returns string|null 验证成功返回echostr，失败返回null
    */
   handleVerification(signature: string, timestamp: string, nonce: string, echostr: string): string | null {
+    console.log('处理验证请求:');
+    
+    // 对参数进行URL解码
+    const decodedEchostr = decodeURIComponent(echostr);
+    console.log('- 原始echostr:', echostr);
+    console.log('- 解码后echostr:', decodedEchostr);
+    
     if (this.verifySignature(signature, timestamp, nonce)) {
-      return echostr;
+      console.log('- 验证成功，返回echostr');
+      return decodedEchostr;
     }
+    
+    console.log('- 验证失败');
     return null;
   }
 }

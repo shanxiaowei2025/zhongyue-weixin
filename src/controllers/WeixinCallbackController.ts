@@ -21,7 +21,26 @@ export class WeixinCallbackController {
    * 初始化路由
    */
   private initializeRoutes(): void {
-    this.router.all('/', (req, res) => this.handleCallback(req, res));
+    // 处理所有HTTP方法
+    this.router.all('/', (req, res) => {
+      console.log(`收到${req.method}请求，路径：${req.path}`);
+      
+      // 处理GET请求（通常是验证URL）
+      if (req.method === 'GET') {
+        console.log('处理GET请求（可能是URL验证）');
+        return this.handleVerification(req, res);
+      }
+      
+      // 处理POST请求（接收消息）
+      if (req.method === 'POST') {
+        console.log('处理POST请求（接收消息）');
+        return this.handleMessage(req, res);
+      }
+      
+      // 其他请求方法
+      console.log('不支持的请求方法');
+      return res.status(405).send('Method Not Allowed');
+    });
   }
 
   /**
@@ -33,50 +52,91 @@ export class WeixinCallbackController {
   }
 
   /**
-   * 处理回调请求
+   * 处理URL验证请求
    * @param req Express请求
    * @param res Express响应
    */
-  async handleCallback(req: Request, res: Response): Promise<void> {
+  private handleVerification(req: Request, res: Response) {
     try {
+      console.log('处理URL验证请求');
+      console.log('请求参数:', req.query);
+      
       const { 
-        signature, timestamp, nonce, echostr, 
-        msg_signature, encrypt_type
+        signature, timestamp, nonce, echostr
       } = req.query as Record<string, string>;
-
-      // 处理URL验证请求
-      if (echostr) {
-        console.log('处理企业微信回调URL验证');
-        const result = WeixinCallbackUtil.handleVerification(
-          signature,
-          timestamp,
-          nonce,
-          echostr
-        );
-        
-        if (result) {
-          res.send(result);
-        } else {
-          console.error('回调URL验证失败');
-          res.status(401).send('验证失败');
-        }
-        return;
+      
+      if (!signature || !timestamp || !nonce || !echostr) {
+        console.error('URL验证请求缺少必要参数');
+        return res.status(400).send('Bad Request');
       }
+      
+      console.log('验证参数:');
+      console.log('- signature:', signature);
+      console.log('- timestamp:', timestamp);
+      console.log('- nonce:', nonce);
+      console.log('- echostr:', echostr);
+      
+      const result = WeixinCallbackUtil.handleVerification(
+        signature,
+        timestamp,
+        nonce,
+        echostr
+      );
+      
+      if (result) {
+        console.log('验证成功，返回echostr:', result);
+        res.send(result);
+      } else {
+        console.error('URL验证失败');
+        res.status(401).send('验证失败');
+      }
+    } catch (error) {
+      console.error('处理URL验证请求失败:', error);
+      res.status(500).send('Internal Server Error');
+    }
+  }
 
+  /**
+   * 处理接收消息请求
+   * @param req Express请求
+   * @param res Express响应
+   */
+  private async handleMessage(req: Request, res: Response) {
+    try {
+      console.log('处理消息请求');
+      console.log('请求头:', req.headers);
+      console.log('请求参数:', req.query);
+      
+      const { 
+        msg_signature, timestamp, nonce
+      } = req.query as Record<string, string>;
+      
+      // 检查是否为加密消息
+      const encrypt_type = req.query.encrypt_type || 
+                         (req.headers['encrypt-type'] as string) || 
+                         'aes';
+      
+      console.log('消息加密类型:', encrypt_type);
+      
       // 获取消息体
       let messageContent;
+      
       if (encrypt_type === 'aes') {
         console.log('处理加密消息');
         // 处理加密消息
         const postData = req.body;
         
-        if (!postData || !postData.Encrypt) {
+        console.log('请求体:', typeof postData === 'string' ? postData : JSON.stringify(postData));
+        
+        if (!postData || (typeof postData === 'object' && !postData.Encrypt)) {
           console.error('无效的加密消息');
           res.send('success'); // 返回success以防止微信重试
           return;
         }
         
-        const msgEncrypt = postData.Encrypt;
+        const msgEncrypt = typeof postData === 'object' ? postData.Encrypt : postData;
+        console.log('加密消息内容:', msgEncrypt);
+        
         const decryptedXml = WeixinCallbackUtil.decryptMessage(
           msgEncrypt,
           msg_signature,
@@ -90,21 +150,54 @@ export class WeixinCallbackController {
           return;
         }
         
+        console.log('解密后的XML:', decryptedXml);
         messageContent = await WeixinCallbackUtil.parseXml(decryptedXml);
       } else {
         // 明文消息
         console.log('处理明文消息');
-        messageContent = req.body;
+        const postData = req.body;
+        console.log('请求体:', typeof postData === 'string' ? postData : JSON.stringify(postData));
+        
+        if (typeof postData === 'string') {
+          messageContent = await WeixinCallbackUtil.parseXml(postData);
+        } else {
+          messageContent = postData;
+        }
       }
-
+      
+      console.log('解析后的消息内容:', JSON.stringify(messageContent));
+      
       // 处理消息内容
       await this.processMessage(messageContent);
       
       // 返回成功响应
       res.send('success');
     } catch (error) {
-      console.error('处理回调失败:', error);
+      console.error('处理消息请求失败:', error);
       // 即使处理失败也返回success，防止微信重试
+      res.send('success');
+    }
+  }
+
+  /**
+   * 处理回调请求
+   * @param req Express请求
+   * @param res Express响应
+   * @deprecated 使用handleVerification和handleMessage替代
+   */
+  async handleCallback(req: Request, res: Response) {
+    try {
+      console.log('收到企业微信回调请求（已废弃的方法）');
+      
+      if (req.method === 'GET') {
+        return this.handleVerification(req, res);
+      } else if (req.method === 'POST') {
+        return this.handleMessage(req, res);
+      } else {
+        return res.status(405).send('Method Not Allowed');
+      }
+    } catch (error) {
+      console.error('处理回调失败:', error);
       res.send('success');
     }
   }

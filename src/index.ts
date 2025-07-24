@@ -26,9 +26,28 @@ console.log('DB_HOST:', process.env.DB_HOST);
 
 // 创建Express应用
 const app = express();
+
+// 添加请求处理中间件
 app.use(express.json());
-app.use(express.text({ type: 'text/xml' }));
+
+// 处理XML请求，微信回调通常以XML格式发送
+app.use(express.text({ type: ['text/xml', 'application/xml'] }));
 app.use(express.urlencoded({ extended: true }));
+
+// 添加日志中间件
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} [${req.method}] ${req.url}`);
+  
+  // 打印查询参数
+  if (Object.keys(req.query).length > 0) {
+    console.log('查询参数:', req.query);
+  }
+  
+  // 打印请求头
+  console.log('请求头:', req.headers['content-type']);
+  
+  next();
+});
 
 // 添加主路由
 app.get('/', (req, res) => {
