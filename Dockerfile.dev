@@ -3,6 +3,13 @@ FROM node:18-alpine
 # 设置工作目录
 WORKDIR /app
 
+# 设置npm镜像和超时配置
+RUN npm config set registry https://registry.npmmirror.com/ && \
+    npm config set fetch-timeout 600000 && \
+    npm config set fetch-retries 5 && \
+    npm config set network-timeout 600000 && \
+    npm config set timeout 600000
+
 # 安装 ts-node 和依赖
 RUN npm install -g ts-node pnpm nodemon
 
@@ -10,8 +17,10 @@ RUN npm install -g ts-node pnpm nodemon
 COPY package.json pnpm-lock.yaml ./
 COPY nodemon.json ./
 
-# 安装依赖
-RUN pnpm install --frozen-lockfile
+# 安装依赖，增加重试和超时设置
+RUN pnpm config set registry https://registry.npmmirror.com/ && \
+    pnpm config set network-timeout 600000 && \
+    pnpm install --frozen-lockfile --network-timeout 600000
 
 # 复制源代码 (注意：在开发模式中，这些文件会被卷挂载覆盖)
 COPY src/ ./src/
