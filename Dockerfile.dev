@@ -18,6 +18,7 @@ COPY src/ ./src/
 # 没有顶级config目录，删除这行
 COPY tsconfig.json .
 COPY .env* ./
+COPY public/ ./public/
 
 # 暴露端口
 EXPOSE 3010

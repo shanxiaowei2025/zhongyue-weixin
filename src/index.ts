@@ -100,6 +100,8 @@ const init = async () => {
   }
 };
 
+app.use(express.static('public'))
+
 // 启动应用
 init().catch(err => {
   console.error('应用启动失败:', err);
