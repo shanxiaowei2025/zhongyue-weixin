@@ -18,9 +18,44 @@ export class WeixinCallbackUtil {
     
     // 添加配置信息日志，便于调试
     console.log('WeixinCallbackUtil 初始化:');
-    console.log('- Token 是否存在:', !!this.token);
-    console.log('- EncodingAESKey 是否存在:', !!this.encodingAESKey);
-    console.log('- CorpId 是否存在:', !!this.corpId);
+    console.log('- Token 是否存在:', !!this.token, this.token ? `(${this.token.substr(0, 3)}...)` : '');
+    console.log('- EncodingAESKey 是否存在:', !!this.encodingAESKey, this.encodingAESKey ? `(${this.encodingAESKey.substr(0, 3)}...)` : '');
+    console.log('- CorpId 是否存在:', !!this.corpId, this.corpId ? `(${this.corpId.substr(0, 3)}...)` : '');
+    
+    // 检查配置是否有效
+    this.checkConfiguration();
+  }
+  
+  /**
+   * 检查配置是否有效
+   */
+  private checkConfiguration() {
+    let hasError = false;
+    
+    if (!this.token || this.token.length < 3) {
+      console.error('⚠️ Token无效或为空，请检查环境变量设置!');
+      hasError = true;
+    }
+    
+    if (!this.encodingAESKey || this.encodingAESKey.length !== 43) {
+      console.error('⚠️ EncodingAESKey无效或长度不为43，请检查环境变量设置!');
+      hasError = true;
+    }
+    
+    if (!this.corpId || this.corpId.length < 5) {
+      console.error('⚠️ CorpId无效或为空，请检查环境变量设置!');
+      hasError = true;
+    }
+    
+    if (hasError) {
+      console.error('⚠️ 配置有误，可能导致验证失败。请确保环境变量正确设置!');
+      console.error('当前环境变量:');
+      console.error('- TOKEN:', process.env.TOKEN || '(未设置)');
+      console.error('- ENCODING_AES_KEY:', process.env.ENCODING_AES_KEY ? '(已设置)' : '(未设置)');
+      console.error('- CORP_ID:', process.env.CORP_ID || '(未设置)');
+    } else {
+      console.log('✅ 配置检查通过');
+    }
   }
 
   /**
@@ -28,22 +63,26 @@ export class WeixinCallbackUtil {
    * @param msg_signature 企业微信加密签名
    * @param timestamp 时间戳
    * @param nonce 随机数
-   * @param echostr 随机字符串
+   * @param echostr 随机字符串(加密的)
    * @returns boolean 是否通过验证
    */
-  verifySignature(msg_signature: string, timestamp: string, nonce: string, echostr?: string): boolean {
+  verifySignature(msg_signature: string, timestamp: string, nonce: string, echostr: string): boolean {
     // 记录输入参数
     console.log('验证签名输入参数:');
     console.log('- msg_signature:', msg_signature);
     console.log('- timestamp:', timestamp);
     console.log('- nonce:', nonce);
+    console.log('- echostr:', echostr);
     console.log('- token:', this.token);
     
-    const arr = [this.token, timestamp, nonce].sort();
+    // 企业微信加密模式下，URL验证的签名计算方法：
+    // 1. 将token、timestamp、nonce、echostr四个参数按照字典序排序
+    const arr = [this.token, timestamp, nonce, echostr].sort();
     const str = arr.join('');
     
-    console.log('- 签名前字符串:', str);
+    console.log('- 签名前字符串(包含echostr):', str);
     
+    // 2. 对字符串进行sha1计算
     const sha1Sum = crypto.createHash('sha1');
     sha1Sum.update(str);
     const calculatedSignature = sha1Sum.digest('hex');
@@ -129,7 +168,7 @@ export class WeixinCallbackUtil {
    * @param timestamp 时间戳
    * @param nonce 随机数
    * @param echostr 随机字符串
-   * @returns string|null 验证成功返回echostr，失败返回null
+   * @returns string|null 验证成功返回解密后的echostr，失败返回null
    */
   handleVerification(msg_signature: string, timestamp: string, nonce: string, echostr: string): string | null {
     console.log('处理验证请求:');
@@ -139,28 +178,26 @@ export class WeixinCallbackUtil {
     console.log('- 原始echostr:', echostr);
     console.log('- 解码后echostr:', decodedEchostr);
     
-    // 尝试验证签名
-    if (this.verifySignature(msg_signature, timestamp, nonce)) {
-      console.log('- 签名验证成功');
+    try {
+      console.log('- 尝试解密echostr');
       
-      // 尝试解密echostr
-      try {
-        const decryptedEchostr = this.decryptEchoStr(decodedEchostr);
-        if (decryptedEchostr) {
-          console.log('- 解密echostr成功');
-          return decryptedEchostr;
-        } else {
-          console.log('- 未能解密echostr，直接返回原始echostr');
-          return decodedEchostr;
-        }
-      } catch (error) {
-        console.error('- 解密echostr失败，直接返回原始echostr:', error);
-        return decodedEchostr;
+      // 在企业微信回调模式下，需要先验证URL
+      if (!this.verifySignature(msg_signature, timestamp, nonce, decodedEchostr)) {
+        console.log('- 签名验证失败');
+        return null;
       }
+      
+      console.log('- 签名验证成功，尝试解密echostr');
+      
+      // 解密echostr
+      const result = this.decryptEchoStr(decodedEchostr);
+      console.log('- 解密结果:', result);
+      
+      return result;
+    } catch (error) {
+      console.error('- 处理验证请求异常:', error);
+      return null;
     }
-    
-    console.log('- 验证失败');
-    return null;
   }
   
   /**
@@ -172,9 +209,6 @@ export class WeixinCallbackUtil {
     try {
       console.log('尝试解密echostr:', echostr);
       
-      // 企业微信的echostr使用Base64编码，需要解码
-      const base64Str = echostr;
-      
       // 使用AES解密
       const aesKey = Buffer.from(this.encodingAESKey + '=', 'base64');
       const iv = aesKey.slice(0, 16);
@@ -182,33 +216,51 @@ export class WeixinCallbackUtil {
       console.log('- 密钥长度:', aesKey.length);
       console.log('- IV长度:', iv.length);
       
-      const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, iv);
-      decipher.setAutoPadding(false); // 关闭自动填充
+      // 将Base64编码的密文解码为Buffer
+      const encrypted = Buffer.from(echostr, 'base64');
       
-      let decrypted = decipher.update(base64Str, 'base64', 'utf8');
-      decrypted += decipher.final('utf8');
+      // 使用AES-256-CBC模式解密
+      const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, iv);
+      decipher.setAutoPadding(false); // 关闭自动填充，企业微信使用PKCS#7填充
+      
+      let decrypted = Buffer.concat([
+        decipher.update(encrypted),
+        decipher.final()
+      ]);
       
       // 去除PKCS#7填充
-      const pad = decrypted.charCodeAt(decrypted.length - 1);
-      if (pad < 1 || pad > 32) {
-        console.error('无效的填充值:', pad);
+      const padLength = decrypted[decrypted.length - 1];
+      if (padLength < 1 || padLength > 32) {
+        console.error('无效的填充值:', padLength);
         return null;
       }
-      decrypted = decrypted.slice(0, -pad);
+      decrypted = decrypted.slice(0, -padLength);
       
-      // 企业微信加密结构：16字节随机字符串 + 4字节消息长度 + 消息内容 + CorpId
-      // 从第21位开始取
-      const content = decrypted.slice(20);
-      const corpId = content.slice(-this.corpId.length);
-      
-      // 验证CorpId是否匹配
-      if (corpId !== this.corpId) {
-        console.error('corpId不匹配，解密结果:', corpId, '期望:', this.corpId);
+      // 检查数据格式：16字节随机字符串 + 4字节消息长度 + 消息内容 + CorpId
+      if (decrypted.length < 20 + this.corpId.length) {
+        console.error('解密后数据长度不足');
         return null;
       }
       
-      // 返回消息内容部分（去除corpId）
-      const result = content.slice(0, -this.corpId.length);
+      // 取出消息内容
+      const random = decrypted.slice(0, 16);
+      const msgLenBuf = decrypted.slice(16, 20);
+      const msgLen = msgLenBuf.readUInt32BE(0);
+      const msgContent = decrypted.slice(20, 20 + msgLen);
+      const receivedCorpId = decrypted.slice(20 + msgLen).toString();
+      
+      console.log('- 解析解密结果:');
+      console.log('  - 随机字符串(16字节):', random.toString('hex'));
+      console.log('  - 消息长度(4字节):', msgLen);
+      console.log('  - 接收到的企业ID:', receivedCorpId);
+      console.log('  - 期望的企业ID:', this.corpId);
+      
+      if (receivedCorpId !== this.corpId) {
+        console.error('企业ID不匹配');
+        return null;
+      }
+      
+      const result = msgContent.toString();
       console.log('- 解密后的echostr:', result);
       return result;
     } catch (error) {
