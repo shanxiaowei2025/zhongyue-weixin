@@ -38,6 +38,31 @@ app.get('/', (req, res) => {
 // 添加回调接口
 app.use('/api/weixin/callback', WeixinCallbackController.getRouter());
 
+// 添加手动同步群组信息接口
+app.post('/api/sync', async (req, res) => {
+  try {
+    console.log('手动触发同步群组信息');
+    const monitorService = new MonitorService();
+    await monitorService.syncAllGroups();
+    res.json({ success: true, message: '群组信息同步成功' });
+  } catch (error: any) {
+    console.error('群组信息同步失败:', error);
+    res.status(500).json({ error: '群组信息同步失败', details: error.message });
+  }
+});
+
+// 添加手动检查响应情况接口
+app.post('/api/check', async (req, res) => {
+  try {
+    console.log('手动触发检查响应情况');
+    await MonitorService.checkAndSendAlerts();
+    res.json({ success: true, message: '响应情况检查成功' });
+  } catch (error: any) {
+    console.error('响应情况检查失败:', error);
+    res.status(500).json({ error: '响应情况检查失败', details: error.message });
+  }
+});
+
 // 添加模拟消息接口（用于测试）
 app.post('/api/simulate/message', async (req, res) => {
   try {
@@ -85,7 +110,8 @@ const init = async () => {
         console.log('======= 开始自动检查 =======');
         await MonitorService.checkAndSendAlerts();
         console.log('======= 自动检查完成 =======');
-      } catch (monitorError) {
+      }
+      catch (monitorError) {
         console.error('监控任务执行失败:', monitorError);
       }
     });
