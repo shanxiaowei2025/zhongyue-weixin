@@ -35,7 +35,7 @@ services:
       - ./.env:/app/.env  # 添加.env文件挂载
     command: pnpm run dev  # 使用开发模式命令
 
-# 网络配置
+# 网络配置 - 使用已存在的外部网络
 networks:
   web_network:
-    driver: bridge 
+    external: true 
