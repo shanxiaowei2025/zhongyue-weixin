@@ -25,16 +25,16 @@ export class WeixinCallbackUtil {
 
   /**
    * 验证企业微信回调签名
-   * @param signature 企业微信加密签名
+   * @param msg_signature 企业微信加密签名
    * @param timestamp 时间戳
    * @param nonce 随机数
    * @param echostr 随机字符串
    * @returns boolean 是否通过验证
    */
-  verifySignature(signature: string, timestamp: string, nonce: string, echostr?: string): boolean {
+  verifySignature(msg_signature: string, timestamp: string, nonce: string, echostr?: string): boolean {
     // 记录输入参数
     console.log('验证签名输入参数:');
-    console.log('- signature:', signature);
+    console.log('- msg_signature:', msg_signature);
     console.log('- timestamp:', timestamp);
     console.log('- nonce:', nonce);
     console.log('- token:', this.token);
@@ -49,9 +49,9 @@ export class WeixinCallbackUtil {
     const calculatedSignature = sha1Sum.digest('hex');
     
     console.log('- 计算得到的签名:', calculatedSignature);
-    console.log('- 是否匹配:', calculatedSignature === signature);
+    console.log('- 是否匹配:', calculatedSignature === msg_signature);
     
-    return calculatedSignature === signature;
+    return calculatedSignature === msg_signature;
   }
 
   /**
@@ -125,13 +125,13 @@ export class WeixinCallbackUtil {
 
   /**
    * 处理企业微信回调验证请求
-   * @param signature 企业微信加密签名
+   * @param msg_signature 企业微信加密签名
    * @param timestamp 时间戳
    * @param nonce 随机数
    * @param echostr 随机字符串
    * @returns string|null 验证成功返回echostr，失败返回null
    */
-  handleVerification(signature: string, timestamp: string, nonce: string, echostr: string): string | null {
+  handleVerification(msg_signature: string, timestamp: string, nonce: string, echostr: string): string | null {
     console.log('处理验证请求:');
     
     // 对参数进行URL解码
@@ -139,13 +139,82 @@ export class WeixinCallbackUtil {
     console.log('- 原始echostr:', echostr);
     console.log('- 解码后echostr:', decodedEchostr);
     
-    if (this.verifySignature(signature, timestamp, nonce)) {
-      console.log('- 验证成功，返回echostr');
-      return decodedEchostr;
+    // 尝试验证签名
+    if (this.verifySignature(msg_signature, timestamp, nonce)) {
+      console.log('- 签名验证成功');
+      
+      // 尝试解密echostr
+      try {
+        const decryptedEchostr = this.decryptEchoStr(decodedEchostr);
+        if (decryptedEchostr) {
+          console.log('- 解密echostr成功');
+          return decryptedEchostr;
+        } else {
+          console.log('- 未能解密echostr，直接返回原始echostr');
+          return decodedEchostr;
+        }
+      } catch (error) {
+        console.error('- 解密echostr失败，直接返回原始echostr:', error);
+        return decodedEchostr;
+      }
     }
     
     console.log('- 验证失败');
     return null;
+  }
+  
+  /**
+   * 解密企业微信验证字符串
+   * @param echostr 加密的验证字符串
+   * @returns 解密后的字符串或null
+   */
+  decryptEchoStr(echostr: string): string | null {
+    try {
+      console.log('尝试解密echostr:', echostr);
+      
+      // 企业微信的echostr使用Base64编码，需要解码
+      const base64Str = echostr;
+      
+      // 使用AES解密
+      const aesKey = Buffer.from(this.encodingAESKey + '=', 'base64');
+      const iv = aesKey.slice(0, 16);
+      
+      console.log('- 密钥长度:', aesKey.length);
+      console.log('- IV长度:', iv.length);
+      
+      const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, iv);
+      decipher.setAutoPadding(false); // 关闭自动填充
+      
+      let decrypted = decipher.update(base64Str, 'base64', 'utf8');
+      decrypted += decipher.final('utf8');
+      
+      // 去除PKCS#7填充
+      const pad = decrypted.charCodeAt(decrypted.length - 1);
+      if (pad < 1 || pad > 32) {
+        console.error('无效的填充值:', pad);
+        return null;
+      }
+      decrypted = decrypted.slice(0, -pad);
+      
+      // 企业微信加密结构：16字节随机字符串 + 4字节消息长度 + 消息内容 + CorpId
+      // 从第21位开始取
+      const content = decrypted.slice(20);
+      const corpId = content.slice(-this.corpId.length);
+      
+      // 验证CorpId是否匹配
+      if (corpId !== this.corpId) {
+        console.error('corpId不匹配，解密结果:', corpId, '期望:', this.corpId);
+        return null;
+      }
+      
+      // 返回消息内容部分（去除corpId）
+      const result = content.slice(0, -this.corpId.length);
+      console.log('- 解密后的echostr:', result);
+      return result;
+    } catch (error) {
+      console.error('解密echostr失败:', error);
+      return null;
+    }
   }
 }
 

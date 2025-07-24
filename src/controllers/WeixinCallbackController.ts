@@ -62,22 +62,22 @@ export class WeixinCallbackController {
       console.log('请求参数:', req.query);
       
       const { 
-        signature, timestamp, nonce, echostr
+        msg_signature, timestamp, nonce, echostr
       } = req.query as Record<string, string>;
       
-      if (!signature || !timestamp || !nonce || !echostr) {
+      if (!msg_signature || !timestamp || !nonce || !echostr) {
         console.error('URL验证请求缺少必要参数');
         return res.status(400).send('Bad Request');
       }
       
       console.log('验证参数:');
-      console.log('- signature:', signature);
+      console.log('- msg_signature:', msg_signature);
       console.log('- timestamp:', timestamp);
       console.log('- nonce:', nonce);
       console.log('- echostr:', echostr);
       
       const result = WeixinCallbackUtil.handleVerification(
-        signature,
+        msg_signature,
         timestamp,
         nonce,
         echostr
