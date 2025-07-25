@@ -64,7 +64,7 @@ export class WeixinCallbackController {
       const { 
         msg_signature, timestamp, nonce, echostr
       } = req.query as Record<string, string>;
-      
+
       if (!msg_signature || !timestamp || !nonce || !echostr) {
         console.error('URL验证请求缺少必要参数');
         return res.status(400).send('Bad Request');
@@ -76,24 +76,24 @@ export class WeixinCallbackController {
       console.log('- nonce:', nonce);
       console.log('- echostr:', echostr);
       
-      const result = WeixinCallbackUtil.handleVerification(
+        const result = WeixinCallbackUtil.handleVerification(
         msg_signature,
-        timestamp,
-        nonce,
-        echostr
-      );
-      
-      if (result) {
+          timestamp,
+          nonce,
+          echostr
+        );
+        
+        if (result) {
         console.log('验证成功，返回echostr:', result);
-        res.send(result);
-      } else {
+          res.send(result);
+        } else {
         console.error('URL验证失败');
-        res.status(401).send('验证失败');
-      }
+          res.status(401).send('验证失败');
+        }
     } catch (error) {
       console.error('处理URL验证请求失败:', error);
       res.status(500).send('Internal Server Error');
-    }
+      }
   }
 
   /**
@@ -120,7 +120,7 @@ export class WeixinCallbackController {
                          'aes';
       
       console.log('消息加密类型:', encrypt_type);
-      
+
       // 获取消息体
       let messageContent;
       
@@ -203,7 +203,7 @@ export class WeixinCallbackController {
         console.log('解密后的XML:', decryptedXml);
         
         try {
-          messageContent = await WeixinCallbackUtil.parseXml(decryptedXml);
+        messageContent = await WeixinCallbackUtil.parseXml(decryptedXml);
           console.log('XML解析结果:', messageContent);
         } catch (parseError) {
           console.error('XML解析失败:', parseError);
@@ -224,7 +224,7 @@ export class WeixinCallbackController {
             console.error('明文XML解析失败:', parseError);
             res.send('success');
             return;
-          }
+      }
         } else {
           messageContent = postData;
           console.log('直接使用对象格式的请求体');
@@ -238,7 +238,7 @@ export class WeixinCallbackController {
       }
       
       console.log('解析后的消息内容:', JSON.stringify(messageContent));
-      
+
       // 处理消息内容
       await this.processMessage(messageContent);
       
@@ -366,7 +366,7 @@ export class WeixinCallbackController {
         // 更新消息记录
         try {
           console.log('- 尝试更新消息记录...');
-          await this.monitorService.simulateNewMessage(chatId, msgObj);
+        await this.monitorService.simulateNewMessage(chatId, msgObj);
           console.log(`- 成功更新群 ${chatId} 的消息记录`);
         } catch (storageError) {
           console.error('- 存储消息失败:', storageError);
@@ -426,12 +426,42 @@ export class WeixinCallbackController {
         case 'change_external_contact': // 客户变更事件
           // 可以处理客户添加/删除事件
           break;
+        case 'msgaudit_notify': // 会话存档通知事件
+          await this.processMsgAuditNotifyEvent(message);
+          break;
         default:
           console.log(`未处理的事件类型: ${Event}`);
           break;
       }
     } catch (error) {
       console.error('处理事件消息失败:', error);
+    }
+  }
+
+  /**
+   * 处理会话存档通知事件
+   * @param message 消息内容
+   */
+  private async processMsgAuditNotifyEvent(message: any): Promise<void> {
+    try {
+      console.log('处理会话存档通知事件:');
+      console.log('- 事件详情:', JSON.stringify(message));
+      
+      // 会话存档通知事件通常没有太多额外信息，主要是通知企业有新的会话可以拉取
+      // 这里可以记录日志，如果需要，还可以通过API拉取最新的会话记录
+      
+      const { ToUserName, FromUserName, CreateTime, AgentID } = message;
+      console.log('- ToUserName (企业ID):', ToUserName);
+      console.log('- FromUserName:', FromUserName);
+      console.log('- CreateTime:', CreateTime);
+      console.log('- AgentID:', AgentID);
+      
+      // 如果需要，这里可以触发拉取会话记录的逻辑
+      // 例如：调用会话存档API获取最新消息
+      
+      console.log('会话存档通知处理完成');
+    } catch (error) {
+      console.error('处理会话存档通知事件失败:', error);
     }
   }
 
