@@ -1,5 +1,6 @@
 import { WeixinService } from './WeixinService';
-import Group, { IMessage } from '../models/Group';
+import { GroupApiService, IGroupData } from './GroupApiService';
+import { IMessage } from '../models/Group';
 import config from '../config/default';
 import moment from 'moment';
 
@@ -9,10 +10,12 @@ import moment from 'moment';
  */
 export class MonitorService {
   private weixinService: WeixinService;
+  private groupApiService: GroupApiService;
   private alertThresholds: number[];
   
   constructor() {
     this.weixinService = new WeixinService();
+    this.groupApiService = new GroupApiService();
     this.alertThresholds = config.alert.thresholds;
   }
 
@@ -27,7 +30,7 @@ export class MonitorService {
   
   /**
    * 同步所有客户群信息
-   * 从企业微信获取最新群聊信息并更新到数据库
+   * 从企业微信获取最新群聊信息并更新到 API
    */
   async syncAllGroups(): Promise<void> {
     try {
@@ -53,38 +56,45 @@ export class MonitorService {
    * 同步单个群聊详情
    * @param chatId 群聊ID
    */
-  async syncGroupDetail(chatId: string): Promise<Group | null> {
+  async syncGroupDetail(chatId: string): Promise<IGroupData | null> {
     try {
       // 获取群详情
       const groupDetail = await this.weixinService.getGroupChatDetail(chatId);
       
+      // 数据验证和清理
+      if (!groupDetail.name || groupDetail.name.trim() === '') {
+        console.warn(`群组 ${chatId} 名称为空，使用默认名称`);
+        groupDetail.name = `未命名群组_${chatId.substring(0, 8)}`;
+      }
+      
+      if (!groupDetail.owner || groupDetail.owner.trim() === '') {
+        console.warn(`群组 ${chatId} 群主信息为空，使用默认值`);
+        groupDetail.owner = 'unknown';
+      }
+      
       // 将群成员分类为员工和客户
-      const members = groupDetail.member_list.map((member: any) => ({
-        userId: member.userid,
+      const members = (groupDetail.member_list || []).map((member: any) => ({
+        userId: member.userid || 'unknown',
         userType: member.type === 1 ? 'employee' : 'customer',
-        name: member.name
+        name: member.name || '未知用户'
       }));
       
-      // 查找或创建群记录
-      const [group, created] = await Group.findOrCreate({
-        where: { chatId },
-        defaults: {
+      // 查找或创建群记录 - 使用 API 服务
+      const [group, created] = await this.groupApiService.findOrCreateGroup(chatId, {
           chatId: groupDetail.chat_id,
-          name: groupDetail.name,
-          owner: groupDetail.owner,
-          members: members,
-          needAlert: false,
-          alertLevel: 0
-        }
+          name: groupDetail.name.trim(),
+          owner: groupDetail.owner.trim(),
+          members: members
       });
       
-      if (!created) {
-        // 更新已有群记录
-        await group.update({
-          name: groupDetail.name,
-          owner: groupDetail.owner,
+      if (!created && group.id) {
+        // 更新已有群记录 - 使用 API 服务
+        const updatedGroup = await this.groupApiService.updateGroup(group.id, {
+          name: groupDetail.name.trim(),
+          owner: groupDetail.owner.trim(),
           members: members
         });
+        return updatedGroup;
       }
       
       return group;
@@ -100,7 +110,8 @@ export class MonitorService {
    */
   async checkAllGroupsResponse(): Promise<void> {
     try {
-      const groups = await Group.findAll();
+      // 使用 API 服务获取所有群组
+      const groups = await this.groupApiService.findAllGroups();
       
       for (const group of groups) {
         await this.checkGroupResponse(group);
@@ -117,7 +128,7 @@ export class MonitorService {
    * 检查单个群聊的响应情况
    * @param group 群聊对象
    */
-  async checkGroupResponse(group: Group): Promise<void> {
+  async checkGroupResponse(group: IGroupData): Promise<void> {
     try {
       console.log(`\n==== 检查群 ${group.name} (${group.chatId}) 的响应情况 ====`);
       
@@ -130,10 +141,12 @@ export class MonitorService {
       // 如果最后一条消息是员工发的，则不需要提醒
       if (group.lastMessage && group.lastMessage.fromType === 'employee') {
         console.log(`群 ${group.name} 最后一条消息是员工发送的，不需要提醒`);
-        await group.update({
+        if (group.id) {
+          await this.groupApiService.updateGroupAlertSettings(group.id, {
           needAlert: false,
           alertLevel: 0
         });
+        }
         return;
       }
       
@@ -166,10 +179,10 @@ export class MonitorService {
       
       console.log(`旧提醒级别: ${group.alertLevel}, 新提醒级别: ${alertLevel}, 是否需要提醒: ${needAlert}`);
       
-      // 如果提醒级别有变化，则更新数据库
-      if (group.alertLevel !== alertLevel) {
-        console.log(`提醒级别有变化，更新数据库记录`);
-        await group.update({
+      // 如果提醒级别有变化，则更新记录
+      if (group.alertLevel !== alertLevel && group.id) {
+        console.log(`提醒级别有变化，更新API记录`);
+        await this.groupApiService.updateGroupAlertSettings(group.id, {
           needAlert,
           alertLevel
         });
@@ -177,7 +190,7 @@ export class MonitorService {
         // 如果需要提醒，则发送提醒消息
         if (needAlert) {
           console.log(`需要发送提醒消息...`);
-          await this.sendAlert(group, minutesPassed);
+          await this.sendAlert({ ...group, needAlert: needAlert ? 1 : 0, alertLevel }, minutesPassed);
         }
       } else {
         console.log(`提醒级别无变化，不发送提醒`);
@@ -193,7 +206,7 @@ export class MonitorService {
    * @param group 需要提醒的群
    * @param minutesPassed 已经过去的分钟数
    */
-  async sendAlert(group: Group, minutesPassed: number): Promise<void> {
+  async sendAlert(group: IGroupData, minutesPassed: number): Promise<void> {
     try {
       console.log('==== 开始发送提醒 ====');
       console.log('群信息:', {
@@ -271,7 +284,8 @@ export class MonitorService {
       console.log(`群ID: ${chatId}`);
       console.log(`消息内容:`, JSON.stringify(message, null, 2));
       
-      const group = await Group.findOne({ where: { chatId } });
+      // 使用 API 服务查找群组
+      const group = await this.groupApiService.findOneGroup(chatId);
       
       if (!group) {
         console.error(`找不到群 ${chatId}`);
@@ -316,7 +330,10 @@ export class MonitorService {
         alertLevel: group.alertLevel
       });
       
-      await group.update(updateData);
+      if (group.id) {
+        // 使用 API 服务更新群组最后消息
+        await this.groupApiService.updateGroupLastMessage(group.id, updateData);
+      }
       
       console.log(`已更新群 ${chatId} 的消息记录`);
       console.log(`==== 模拟新消息完成 ====\n`);

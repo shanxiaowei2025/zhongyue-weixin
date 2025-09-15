@@ -5,9 +5,10 @@ import path from 'path';
 import schedule from 'node-schedule';
 import config from './config/default';
 import { MonitorService } from './services/MonitorService';
-import Group from './models/Group';
 import WeixinCallbackController from './controllers/WeixinCallbackController';
-import sequelize, { initDatabase } from './utils/database';
+// 注意：由于现在使用 API 服务，不再需要直接操作数据库模型
+// import Group from './models/Group';
+// import sequelize, { initDatabase } from './utils/database';
 
 // 更详细的环境变量调试选项
 const dotenvOptions = {
@@ -21,8 +22,7 @@ const myEnv = dotenv.config(dotenvOptions);
 dotenvExpand.expand(myEnv);
 
 console.log('环境变量加载完成。检查关键变量:');
-console.log('DB_PASSWORD存在:', !!process.env.DB_PASSWORD);
-console.log('DB_HOST:', process.env.DB_HOST);
+console.log('GROUPS_API_BASE_URL:', process.env.GROUPS_API_BASE_URL || '使用默认值');
 
 // 创建Express应用
 const app = express();
@@ -51,7 +51,7 @@ app.use((req, res, next) => {
 
 // 添加主路由
 app.get('/', (req, res) => {
-  res.send('企业微信群消息监控服务正在运行');
+  res.send('企业微信群消息监控服务正在运行（现已使用API服务）');
 });
 
 // 添加回调接口
@@ -100,29 +100,13 @@ app.post('/api/simulate/message', async (req, res) => {
   }
 });
 
-// 初始化数据库并启动应用
+// 初始化应用（简化版，不再需要数据库连接）
 const init = async () => {
   try {
     console.log('开始初始化应用...');
+    console.log('现在使用 API 服务管理群组数据，不再需要直接连接数据库');
 
-    // 尝试连接数据库并重试
-    const dbConnected = await initDatabase();
-    if (!dbConnected) {
-      console.error('数据库连接失败，应用将尝试继续运行');
-    } else {
-      console.log('数据库连接成功');
-
-      try {
-        // 同步数据库模型
-        console.log('正在同步数据库模型...');
-        await Group.sync();
-        console.log('数据库模型同步成功');
-      } catch (syncError) {
-        console.error('数据库模型同步失败:', syncError);
-      }
-    }
-
-    // 启动定时任务，即使数据库连接失败也启动服务
+    // 启动定时任务
     console.log('设置定时任务...');
     schedule.scheduleJob('* * * * *', async () => {
       try {
@@ -139,6 +123,7 @@ const init = async () => {
     const port = process.env.PORT || config.server.port || 3010;
     app.listen(port, () => {
       console.log(`服务器启动在端口: ${port}`);
+      console.log('群组数据现在通过 API 服务管理');
     });
   } catch (error) {
     console.error('应用初始化失败:', error);

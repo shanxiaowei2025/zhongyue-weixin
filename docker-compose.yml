@@ -27,7 +27,7 @@ services:
       - PORT=3010
       - ALERT_THRESHOLDS=${ALERT_THRESHOLDS}
     networks:
-      - web_network
+      - zhongyue-django_zhongyue-network
     volumes:
       - ./logs:/app/logs
       - ./src:/app/src  # 添加源代码目录挂载，已包含src/config
@@ -37,5 +37,5 @@ services:
 
 # 网络配置 - 使用已存在的外部网络
 networks:
-  web_network:
+  zhongyue-django_zhongyue-network:
     external: true 
