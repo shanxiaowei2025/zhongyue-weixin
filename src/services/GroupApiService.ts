@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { IMessage } from '../models/Group';
+import { IMessage } from '../types';
 
 // 定义群组数据接口，与原 Group 模型保持一致
 export interface IGroupData {

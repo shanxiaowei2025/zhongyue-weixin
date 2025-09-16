@@ -1,6 +1,6 @@
 import { WeixinService } from './WeixinService';
 import { GroupApiService, IGroupData } from './GroupApiService';
-import { IMessage } from '../models/Group';
+import { IMessage } from '../types';
 import config from '../config/default';
 import moment from 'moment';
 

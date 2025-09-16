@@ -6,9 +6,6 @@ import schedule from 'node-schedule';
 import config from './config/default';
 import { MonitorService } from './services/MonitorService';
 import WeixinCallbackController from './controllers/WeixinCallbackController';
-// 注意：由于现在使用 API 服务，不再需要直接操作数据库模型
-// import Group from './models/Group';
-// import sequelize, { initDatabase } from './utils/database';
 
 // 更详细的环境变量调试选项
 const dotenvOptions = {

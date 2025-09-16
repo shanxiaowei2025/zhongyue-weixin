@@ -11,12 +11,6 @@ services:
       - "3010:3010"
     environment:
       - NODE_ENV=development  # 改为development环境
-      # 通过环境变量传递MySQL连接信息 - 使用.env中的配置
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
       # 企业微信配置
       - CORP_ID=${CORP_ID}
       - CORP_SECRET=${CORP_SECRET}

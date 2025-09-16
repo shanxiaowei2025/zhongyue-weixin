@@ -1,7 +1,7 @@
 import { Request, Response, Router } from 'express';
 import WeixinCallbackUtil from '../utils/WeixinCallbackUtil';
 import { MonitorService } from '../services/MonitorService';
-import { IMessage } from '../models/Group';
+import { IMessage } from '../types';
 
 /**
  * 企业微信回调控制器
