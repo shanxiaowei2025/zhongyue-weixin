@@ -113,11 +113,50 @@ export class MonitorService {
       // 使用 API 服务获取所有群组
       const groups = await this.groupApiService.findAllGroups();
       
+      let checkedCount = 0;
+      let needAlertCount = 0;
+      let noCustomerMsgCount = 0;
+      let employeeRepliedCount = 0;
+      
       for (const group of groups) {
+        checkedCount++;
+        
+        // 统计分类
+        if (!group.lastCustomerMessage) {
+          noCustomerMsgCount++;
+        } else if (group.lastMessage && group.lastMessage.fromType === 'employee') {
+          employeeRepliedCount++;
+        } else {
+          // 计算是否需要提醒
+          const lastCustomerMsgTime = moment(group.lastCustomerMessage.createTime);
+          const now = moment();
+          const minutesPassed = now.diff(lastCustomerMsgTime, 'minutes');
+          
+          for (let i = this.alertThresholds.length - 1; i >= 0; i--) {
+            if (minutesPassed >= this.alertThresholds[i]) {
+              needAlertCount++;
+              break;
+            }
+          }
+        }
+        
         await this.checkGroupResponse(group);
       }
       
-      console.log(`已检查 ${groups.length} 个群的响应情况`);
+      // 输出统计信息
+      console.log(`\n📊 群响应检查统计:`);
+      console.log(`- 总检查群数: ${checkedCount}`);
+      console.log(`- 无客户消息: ${noCustomerMsgCount}`);
+      console.log(`- 员工已回复: ${employeeRepliedCount}`);
+      console.log(`- 需要提醒: ${needAlertCount}`);
+      console.log(`- 正常状态: ${checkedCount - noCustomerMsgCount - employeeRepliedCount - needAlertCount}`);
+      
+      if (needAlertCount > 0) {
+        console.log(`⚠️  发现 ${needAlertCount} 个群需要提醒，详细信息见上方日志`);
+      } else {
+        console.log(`✅ 所有群响应正常，无需提醒`);
+      }
+      console.log('');
     } catch (error) {
       console.error('检查群响应情况失败:', error);
       throw error;
@@ -130,17 +169,13 @@ export class MonitorService {
    */
   async checkGroupResponse(group: IGroupData): Promise<void> {
     try {
-      console.log(`\n==== 检查群 ${group.name} (${group.chatId}) 的响应情况 ====`);
-      
-      // 如果没有客户最后消息记录，则不需要提醒
+      // 如果没有客户最后消息记录，则不需要提醒（静默处理）
       if (!group.lastCustomerMessage) {
-        console.log(`群 ${group.name} 没有客户最后消息记录，不需要提醒`);
         return;
       }
       
-      // 如果最后一条消息是员工发的，则不需要提醒
+      // 如果最后一条消息是员工发的，则不需要提醒（静默处理）
       if (group.lastMessage && group.lastMessage.fromType === 'employee') {
-        console.log(`群 ${group.name} 最后一条消息是员工发送的，不需要提醒`);
         if (group.id) {
           await this.groupApiService.updateGroupAlertSettings(group.id, {
           needAlert: false,
@@ -155,15 +190,6 @@ export class MonitorService {
       const now = moment();
       const minutesPassed = now.diff(lastCustomerMsgTime, 'minutes');
       
-      // 转换为北京时间显示
-      const lastMsgTimeLocal = lastCustomerMsgTime.utcOffset(8).format('YYYY-MM-DD HH:mm:ss');
-      const nowLocal = now.utcOffset(8).format('YYYY-MM-DD HH:mm:ss');
-      
-      console.log(`群 ${group.name} 客户最后消息时间(北京时间): ${lastMsgTimeLocal}`);
-      console.log(`现在时间(北京时间): ${nowLocal}`);
-      console.log(`已经过去 ${minutesPassed} 分钟`);
-      console.log(`当前提醒阈值设置:`, this.alertThresholds);
-      
       // 确定提醒级别
       let alertLevel = 0;
       let needAlert = false;
@@ -172,16 +198,38 @@ export class MonitorService {
         if (minutesPassed >= this.alertThresholds[i]) {
           alertLevel = i + 1;
           needAlert = true;
-          console.log(`超过阈值 ${this.alertThresholds[i]} 分钟，设置提醒级别为 ${alertLevel}`);
           break;
         }
       }
       
-      console.log(`旧提醒级别: ${group.alertLevel}, 新提醒级别: ${alertLevel}, 是否需要提醒: ${needAlert}`);
+      // 只有在需要提醒或提醒级别有变化时才输出详细日志
+      const hasAlertChange = group.alertLevel !== alertLevel;
+      const shouldShowLog = needAlert || hasAlertChange;
+      
+      if (shouldShowLog) {
+        console.log(`\n==== 检查群 ${group.name} (${group.chatId}) 的响应情况 ====`);
+        
+        // 转换为北京时间显示
+        const lastMsgTimeLocal = lastCustomerMsgTime.utcOffset(8).format('YYYY-MM-DD HH:mm:ss');
+        const nowLocal = now.utcOffset(8).format('YYYY-MM-DD HH:mm:ss');
+        
+        console.log(`群 ${group.name} 客户最后消息时间(北京时间): ${lastMsgTimeLocal}`);
+        console.log(`现在时间(北京时间): ${nowLocal}`);
+        console.log(`已经过去 ${minutesPassed} 分钟`);
+        console.log(`当前提醒阈值设置:`, this.alertThresholds);
+        
+        if (needAlert) {
+          console.log(`超过阈值 ${this.alertThresholds[alertLevel - 1]} 分钟，设置提醒级别为 ${alertLevel}`);
+        }
+        
+        console.log(`旧提醒级别: ${group.alertLevel}, 新提醒级别: ${alertLevel}, 是否需要提醒: ${needAlert}`);
+      }
       
       // 如果提醒级别有变化，则更新记录
-      if (group.alertLevel !== alertLevel && group.id) {
-        console.log(`提醒级别有变化，更新API记录`);
+      if (hasAlertChange && group.id) {
+        if (shouldShowLog) {
+          console.log(`提醒级别有变化，更新API记录`);
+        }
         await this.groupApiService.updateGroupAlertSettings(group.id, {
           needAlert,
           alertLevel
@@ -189,13 +237,18 @@ export class MonitorService {
         
         // 如果需要提醒，则发送提醒消息
         if (needAlert) {
-          console.log(`需要发送提醒消息...`);
+          if (shouldShowLog) {
+            console.log(`需要发送提醒消息...`);
+          }
           await this.sendAlert({ ...group, needAlert: needAlert ? 1 : 0, alertLevel }, minutesPassed);
         }
-      } else {
+      } else if (shouldShowLog) {
         console.log(`提醒级别无变化，不发送提醒`);
       }
-      console.log(`==== 检查群 ${group.name} 响应情况完成 ====\n`);
+      
+      if (shouldShowLog) {
+        console.log(`==== 检查群 ${group.name} 响应情况完成 ====\n`);
+      }
     } catch (error) {
       console.error(`检查群 ${group.chatId} 响应情况失败:`, error);
     }

@@ -5,6 +5,7 @@ import path from 'path';
 import schedule from 'node-schedule';
 import config from './config/default';
 import { MonitorService } from './services/MonitorService';
+import { CallbackStatsService } from './services/CallbackStatsService';
 import WeixinCallbackController from './controllers/WeixinCallbackController';
 
 // 更详细的环境变量调试选项
@@ -53,6 +54,41 @@ app.get('/', (req, res) => {
 
 // 添加回调接口
 app.use('/api/weixin/callback', WeixinCallbackController.getRouter());
+
+// 添加健康检查和统计接口
+app.get('/api/health', (req, res) => {
+  const callbackStats = CallbackStatsService.getInstance();
+  const stats = callbackStats.getStats();
+  
+  res.json({
+    service: 'zhongyue-weixin',
+    status: stats.health.status,
+    timestamp: new Date().toISOString(),
+    uptime: stats.uptime,
+    callback: {
+      verification: stats.verification,
+      message: stats.message,
+      health: stats.health
+    },
+    recentErrors: stats.recentErrors.slice(0, 5) // 只显示最近5条错误
+  });
+});
+
+// 添加详细统计接口
+app.get('/api/callback/stats', (req, res) => {
+  const callbackStats = CallbackStatsService.getInstance();
+  const stats = callbackStats.getStats();
+  res.json(stats);
+});
+
+// 添加重置统计接口（仅开发环境）
+if (process.env.NODE_ENV !== 'production') {
+  app.post('/api/callback/reset-stats', (req, res) => {
+    const callbackStats = CallbackStatsService.getInstance();
+    callbackStats.resetStats();
+    res.json({ message: '统计数据已重置' });
+  });
+}
 
 // 添加手动同步群组信息接口
 app.post('/api/sync', async (req, res) => {
@@ -120,7 +156,15 @@ const init = async () => {
     const port = process.env.PORT || config.server.port || 3010;
     app.listen(port, () => {
       console.log(`服务器启动在端口: ${port}`);
-      console.log('群组数据现在通过 API 服务管理');
+      console.log('群组数据通过外部 API 服务管理');
+      console.log('当前服务专注于消息监控和告警功能');
+      console.log('');
+      console.log('🔍 监控接口:');
+      console.log(`  GET  http://localhost:${port}/api/health        - 健康检查和基本统计`);
+      console.log(`  GET  http://localhost:${port}/api/callback/stats - 详细回调统计`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`  POST http://localhost:${port}/api/callback/reset-stats - 重置统计（仅开发环境）`);
+      }
     });
   } catch (error) {
     console.error('应用初始化失败:', error);

@@ -1,6 +1,7 @@
 import { Request, Response, Router } from 'express';
 import WeixinCallbackUtil from '../utils/WeixinCallbackUtil';
 import { MonitorService } from '../services/MonitorService';
+import { CallbackStatsService } from '../services/CallbackStatsService';
 import { IMessage } from '../types';
 
 /**
@@ -9,10 +10,12 @@ import { IMessage } from '../types';
  */
 export class WeixinCallbackController {
   private monitorService: MonitorService;
+  private callbackStats: CallbackStatsService;
   private router: Router;
 
   constructor() {
     this.monitorService = new MonitorService();
+    this.callbackStats = CallbackStatsService.getInstance();
     this.router = Router();
     this.initializeRoutes();
   }
@@ -85,13 +88,16 @@ export class WeixinCallbackController {
         
         if (result) {
         console.log('验证成功，返回echostr:', result);
+          this.callbackStats.recordVerification(true);
           res.send(result);
         } else {
         console.error('URL验证失败');
+          this.callbackStats.recordVerification(false, 'URL验证失败');
           res.status(401).send('验证失败');
         }
     } catch (error) {
       console.error('处理URL验证请求失败:', error);
+      this.callbackStats.recordVerification(false, `处理验证请求异常: ${error}`);
       res.status(500).send('Internal Server Error');
       }
   }
@@ -240,7 +246,11 @@ export class WeixinCallbackController {
       console.log('解析后的消息内容:', JSON.stringify(messageContent));
 
       // 处理消息内容
+      const messageType = messageContent?.MsgType || 'unknown';
       await this.processMessage(messageContent);
+      
+      // 记录成功统计
+      this.callbackStats.recordMessage(true, messageType);
       
       // 返回成功响应
       console.log('消息处理完成，返回success');
@@ -248,6 +258,8 @@ export class WeixinCallbackController {
       res.send('success');
     } catch (error) {
       console.error('处理消息请求失败:', error);
+      // 记录失败统计
+      this.callbackStats.recordMessage(false, undefined, `处理消息请求异常: ${error}`, error);
       // 即使处理失败也返回success，防止微信重试
       res.send('success');
     }
