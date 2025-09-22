@@ -20,6 +20,8 @@ services:
       # 其他配置
       - PORT=3010
       - ALERT_THRESHOLDS=${ALERT_THRESHOLDS}
+      # Groups API 配置 - 指向宿主机的API服务
+      - GROUPS_API_BASE_URL=http://host.docker.internal:3000
     networks:
       - zhongyue-django_zhongyue-network
     volumes:

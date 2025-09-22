@@ -72,7 +72,12 @@ export class WeixinCallbackController {
   private handleVerification(req: Request, res: Response) {
     try {
       console.log('处理URL验证请求');
-      console.log('请求参数:', req.query);
+      console.log('完整请求URL:', req.originalUrl);
+      console.log('请求路径:', req.path);
+      console.log('请求方法:', req.method);
+      console.log('请求头:', JSON.stringify(req.headers, null, 2));
+      console.log('查询参数:', JSON.stringify(req.query, null, 2));
+      console.log('请求体:', JSON.stringify(req.body, null, 2));
       
       const { 
         msg_signature, timestamp, nonce, echostr
@@ -80,6 +85,11 @@ export class WeixinCallbackController {
 
       if (!msg_signature || !timestamp || !nonce || !echostr) {
         console.error('URL验证请求缺少必要参数');
+        console.error('缺少的参数详情:');
+        console.error('- msg_signature:', msg_signature ? '存在' : '缺少');
+        console.error('- timestamp:', timestamp ? '存在' : '缺少');
+        console.error('- nonce:', nonce ? '存在' : '缺少');
+        console.error('- echostr:', echostr ? '存在' : '缺少');
         return res.status(400).send('Bad Request');
       }
       
