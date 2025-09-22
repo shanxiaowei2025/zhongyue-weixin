@@ -384,8 +384,27 @@ export class MonitorService {
       });
       
       if (group.id) {
+        // 构建符合API要求的消息数据格式
+        const messageData: any = {
+          from: message.from,
+          msgId: message.msgId,
+          content: message.content,
+          fromType: message.fromType,
+          createTime: message.createTime instanceof Date ? message.createTime.toISOString() : message.createTime
+        };
+        
         // 使用 API 服务更新群组最后消息
-        await this.groupApiService.updateGroupLastMessage(group.id, updateData);
+        await this.groupApiService.updateGroupLastMessage(group.id, messageData, 'general');
+        
+        // 如果是员工消息，也更新员工最后消息
+        if (message.fromType === 'employee') {
+          await this.groupApiService.updateGroupLastMessage(group.id, messageData, 'employee');
+        }
+        
+        // 如果是客户消息，也更新客户最后消息  
+        if (message.fromType === 'customer') {
+          await this.groupApiService.updateGroupLastMessage(group.id, messageData, 'customer');
+        }
       }
       
       console.log(`已更新群 ${chatId} 的消息记录`);
