@@ -2,6 +2,7 @@ import { Request, Response, Router } from 'express';
 import WeixinCallbackUtil from '../utils/WeixinCallbackUtil';
 import { MonitorService } from '../services/MonitorService';
 import { CallbackStatsService } from '../services/CallbackStatsService';
+import MessageArchiveService from '../services/MessageArchiveService';
 import { IMessage } from '../types';
 
 /**
@@ -11,11 +12,17 @@ import { IMessage } from '../types';
 export class WeixinCallbackController {
   private monitorService: MonitorService;
   private callbackStats: CallbackStatsService;
+  private messageArchiveService: MessageArchiveService;
   private router: Router;
 
   constructor() {
     this.monitorService = new MonitorService();
     this.callbackStats = CallbackStatsService.getInstance();
+    this.messageArchiveService = new MessageArchiveService({
+      corpId: 'wwb477a7d74c001523',
+      secret: '', // 需要配置会话存档应用的Secret
+      privateKey: '' // 需要配置RSA私钥
+    });
     this.router = Router();
     this.initializeRoutes();
   }
@@ -459,17 +466,35 @@ export class WeixinCallbackController {
       console.log('处理会话存档通知事件:');
       console.log('- 事件详情:', JSON.stringify(message));
       
-      // 会话存档通知事件通常没有太多额外信息，主要是通知企业有新的会话可以拉取
-      // 这里可以记录日志，如果需要，还可以通过API拉取最新的会话记录
-      
       const { ToUserName, FromUserName, CreateTime, AgentID } = message;
       console.log('- ToUserName (企业ID):', ToUserName);
       console.log('- FromUserName:', FromUserName);
       console.log('- CreateTime:', CreateTime);
       console.log('- AgentID:', AgentID);
       
-      // 如果需要，这里可以触发拉取会话记录的逻辑
-      // 例如：调用会话存档API获取最新消息
+      console.log('⚠️  收到会话存档通知 - 当前应用配置为会话存档模式');
+      console.log('💡 这意味着有新的会话数据可以拉取，但需要额外配置：');
+      console.log('');
+      console.log('🔧 解决方案选择：');
+      console.log('');
+      console.log('【方案1】切换为直接消息接收模式（推荐）：');
+      console.log('   1. 登录企业微信管理后台');
+      console.log('   2. 进入应用管理 → 找到你的应用');
+      console.log('   3. 设置"接收消息" → 配置回调URL');
+      console.log('   4. 关闭"会话内容存档"功能');
+      console.log('   ✅ 优点：直接接收消息，实时性好，配置简单');
+      console.log('');
+      console.log('【方案2】继续使用会话存档模式：');
+      console.log('   1. 配置会话存档应用的Secret和RSA私钥');
+      console.log('   2. 启用MessageArchiveService服务');
+      console.log('   3. 通过API主动拉取会话记录');
+      console.log('   ✅ 优点：完整的会话记录，支持历史消息');
+      console.log('');
+      console.log('📖 参考文档：https://developer.work.weixin.qq.com/document/path/91774');
+      
+      // 如果配置了会话存档服务，尝试拉取消息
+      // 注意：需要先配置正确的secret和privateKey
+      // await this.messageArchiveService.processMsgAuditNotify();
       
       console.log('会话存档通知处理完成');
     } catch (error) {
