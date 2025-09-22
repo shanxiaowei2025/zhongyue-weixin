@@ -3,6 +3,7 @@ import WeixinCallbackUtil from '../utils/WeixinCallbackUtil';
 import { MonitorService } from '../services/MonitorService';
 import { CallbackStatsService } from '../services/CallbackStatsService';
 import MessageArchiveService from '../services/MessageArchiveService';
+import { GroupApiService } from '../services/GroupApiService';
 import { IMessage } from '../types';
 
 /**
@@ -13,6 +14,7 @@ export class WeixinCallbackController {
   private monitorService: MonitorService;
   private callbackStats: CallbackStatsService;
   private messageArchiveService: MessageArchiveService;
+  private groupApiService: GroupApiService;
   private router: Router;
 
   constructor() {
@@ -23,6 +25,7 @@ export class WeixinCallbackController {
       secret: '', // 需要配置会话存档应用的Secret
       privateKey: '' // 需要配置RSA私钥
     });
+    this.groupApiService = new GroupApiService();
     this.router = Router();
     this.initializeRoutes();
   }
@@ -368,7 +371,8 @@ export class WeixinCallbackController {
         const chatId = message.ChatInfo.ChatId;
         console.log('- 消息来自群聊，ChatId:', chatId);
         
-        const fromType = this.isEmployee(FromUserName) ? 'employee' as const : 'customer' as const;
+        const isEmp = await this.isEmployee(FromUserName, chatId);
+        const fromType = isEmp ? 'employee' as const : 'customer' as const;
         console.log('- 发送者类型:', fromType);
         
         // 构建消息对象
@@ -410,7 +414,8 @@ export class WeixinCallbackController {
       // 判断是否来自客户群
       if (message.ChatInfo && message.ChatInfo.ChatId) {
         const chatId = message.ChatInfo.ChatId;
-        const fromType = this.isEmployee(FromUserName) ? 'employee' as const : 'customer' as const;
+        const isEmp = await this.isEmployee(FromUserName, chatId);
+        const fromType = isEmp ? 'employee' as const : 'customer' as const;
         
         // 构建消息对象
         const msgObj: IMessage = {
@@ -535,10 +540,49 @@ export class WeixinCallbackController {
    * @param userId 用户ID
    * @returns boolean 是否为员工
    */
-  private isEmployee(userId: string): boolean {
-    // 企业微信的员工ID通常是企业微信CorpId前缀
-    // 这里简单实现，实际应用中可能需要更复杂的判断
-    return !userId.includes('wm') && !userId.includes('wxid');
+  private async isEmployee(userId: string, chatId?: string): Promise<boolean> {
+    // 如果提供了chatId，尝试从数据库中查询用户类型
+    if (chatId) {
+      try {
+        const group = await this.groupApiService.findOneGroup(chatId);
+        if (group && group.members) {
+          const member = group.members.find(m => m.userId === userId);
+          if (member) {
+            console.log(`从数据库查询到用户 ${userId} 的类型: ${member.userType}`);
+            return member.userType === 'employee';
+          }
+        }
+      } catch (error) {
+        console.warn(`查询群 ${chatId} 成员信息失败，使用备用判断逻辑:`, error);
+      }
+    }
+    
+    // 备用判断逻辑：已知的员工用户名列表
+    const employeeUsers = [
+      'zongxin',
+      'LiuFei',
+      'ZhongYueHuiJiCaoHaiLing1318023501',
+      'aZhongYueHuiJiFuWuZhangYiRu138311'
+    ];
+    
+    // 首先检查是否在员工列表中
+    if (employeeUsers.includes(userId)) {
+      return true;
+    }
+    
+    // 员工ID的特征模式：
+    // 1. 包含中文公司名称的拼音：ZhongYue, HuiJi 等
+    // 2. 不包含微信的特征字符：wm, wxid
+    const hasCompanyPattern = /ZhongYue|HuiJi|Cao|Zhang|Liu/i.test(userId);
+    const hasWeChatPattern = userId.includes('wm') || userId.includes('wxid');
+    
+    // 如果包含公司模式且不包含微信模式，判断为员工
+    if (hasCompanyPattern && !hasWeChatPattern) {
+      return true;
+    }
+    
+    // 默认判断为客户
+    return false;
   }
 }
 

@@ -220,15 +220,15 @@ export class MonitorService {
         
         if (needAlert) {
           console.log(`超过阈值 ${this.alertThresholds[alertLevel - 1]} 分钟，设置提醒级别为 ${alertLevel}`);
-        }
-        
-        console.log(`旧提醒级别: ${group.alertLevel}, 新提醒级别: ${alertLevel}, 是否需要提醒: ${needAlert}`);
+      }
+      
+      console.log(`旧提醒级别: ${group.alertLevel}, 新提醒级别: ${alertLevel}, 是否需要提醒: ${needAlert}`);
       }
       
       // 如果提醒级别有变化，则更新记录
       if (hasAlertChange && group.id) {
         if (shouldShowLog) {
-          console.log(`提醒级别有变化，更新API记录`);
+        console.log(`提醒级别有变化，更新API记录`);
         }
         await this.groupApiService.updateGroupAlertSettings(group.id, {
           needAlert,
@@ -238,7 +238,7 @@ export class MonitorService {
         // 如果需要提醒，则发送提醒消息
         if (needAlert) {
           if (shouldShowLog) {
-            console.log(`需要发送提醒消息...`);
+          console.log(`需要发送提醒消息...`);
           }
           await this.sendAlert({ ...group, needAlert: needAlert ? 1 : 0, alertLevel }, minutesPassed);
         }
@@ -247,7 +247,7 @@ export class MonitorService {
       }
       
       if (shouldShowLog) {
-        console.log(`==== 检查群 ${group.name} 响应情况完成 ====\n`);
+      console.log(`==== 检查群 ${group.name} 响应情况完成 ====\n`);
       }
     } catch (error) {
       console.error(`检查群 ${group.chatId} 响应情况失败:`, error);
