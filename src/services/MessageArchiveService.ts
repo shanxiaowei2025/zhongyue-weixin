@@ -80,23 +80,51 @@ export class MessageArchiveService {
 
   /**
    * 拉取会话记录
+   * 注意：企业微信会话存档需要特殊的secret，不是普通应用的secret
    */
   async getChatRecords(seq: number = 0, limit: number = 1000): Promise<ChatRecord[]> {
     try {
-      const accessToken = await this.getAccessToken();
+      // 检查是否配置了会话存档专用的secret
+      if (!process.env.WEIXIN_MSGAUDIT_SECRET) {
+        throw new Error('未配置会话存档专用的WEIXIN_MSGAUDIT_SECRET');
+      }
+
+             // 获取会话存档专用的access_token
+       const msgauditSecret = process.env.WEIXIN_MSGAUDIT_SECRET;
+       const tokenResponse = await axios.get(
+         `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${this.config.corpId}&corpsecret=${msgauditSecret}`
+       );
+
+      if (tokenResponse.data.errcode !== 0) {
+        throw new Error(`获取会话存档access_token失败: ${tokenResponse.data.errmsg}`);
+      }
+
+      const accessToken = tokenResponse.data.access_token;
       
       const response = await axios.post(
-        `https://qyapi.weixin.qq.com/cgi-bin/msgaudit/get_robot_info?access_token=${accessToken}`,
-        {
-          seq: seq,
-          limit: limit
-        }
+        `https://qyapi.weixin.qq.com/cgi-bin/msgaudit/get_permit_user_list?access_token=${accessToken}`,
+        {}
       );
 
+      console.log('会话存档API响应:', response.data);
+
       if (response.data.errcode === 0) {
-        return response.data.chatdata || [];
+        // 如果是查询许可用户列表成功，则尝试拉取聊天数据
+        const chatResponse = await axios.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/msgaudit/get_chat_data?access_token=${accessToken}`,
+          {
+            seq: seq,
+            limit: limit
+          }
+        );
+
+        if (chatResponse.data.errcode === 0) {
+          return chatResponse.data.chatdata || [];
+        } else {
+          throw new Error(`拉取会话记录失败: ${chatResponse.data.errmsg}`);
+        }
       } else {
-        throw new Error(`拉取会话记录失败: ${response.data.errmsg}`);
+        throw new Error(`会话存档权限检查失败: ${response.data.errmsg}`);
       }
     } catch (error) {
       console.error('拉取会话记录失败:', error);
