@@ -63,15 +63,67 @@ export class MessageArchiveService {
 
   /**
    * 健康检查 - 测试Go服务连接
+   * 由于WeworkMsg服务可能没有标准的/health端点，我们尝试多种方式检测服务可用性
    */
   async healthCheck(): Promise<boolean> {
+    // 尝试多个可能的端点来检测服务是否运行
+    const endpointsToTry = [
+      '/health',
+      '/ping', 
+      '/status',
+      '/'
+    ];
+
+    for (const endpoint of endpointsToTry) {
+      try {
+        const response = await axios.get(`${this.GO_SERVICE_URL}${endpoint}`, {
+          timeout: 3000
+        });
+        
+        // 如果得到任何响应（即使是404），说明服务在运行
+        if (response.status >= 200 && response.status < 500) {
+          console.log(`Go服务检测成功，端点: ${endpoint}, 状态码: ${response.status}`);
+          return true;
+        }
+      } catch (error: any) {
+        // 如果是404错误，说明服务在运行但端点不存在
+        if (error.response && error.response.status === 404) {
+          console.log(`Go服务检测成功，端点: ${endpoint} 返回404但服务正在运行`);
+          return true;
+        }
+        
+        // 继续尝试下一个端点
+        console.log(`端点 ${endpoint} 检测失败:`, error.message);
+      }
+    }
+
+    // 最后尝试TCP连接检测
     try {
-      const response = await axios.get(`${this.GO_SERVICE_URL}/health`, {
-        timeout: 5000
+      const net = require('net');
+      const socket = new net.Socket();
+      
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          socket.destroy();
+          console.error('Go服务TCP连接超时');
+          resolve(false);
+        }, 3000);
+
+        socket.connect(8889, 'localhost', () => {
+          clearTimeout(timeout);
+          socket.destroy();
+          console.log('Go服务TCP连接成功');
+          resolve(true);
+        });
+
+        socket.on('error', (error: any) => {
+          clearTimeout(timeout);
+          console.error('Go服务TCP连接失败:', error.message);
+          resolve(false);
+        });
       });
-      return response.status === 200;
     } catch (error) {
-      console.error('Go服务连接失败:', error);
+      console.error('Go服务连接检测失败:', error);
       return false;
     }
   }
