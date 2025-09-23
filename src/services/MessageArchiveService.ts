@@ -16,12 +16,20 @@ interface ChatRecord {
   msgtime: number;
   msgtype: string;
   content: any;
+  [key: string]: any;
+}
+
+interface ChatDataResponse {
+  errcode: number;
+  errmsg: string;
+  chatdata: ChatRecord[];
 }
 
 export class MessageArchiveService {
   private config: MessageArchiveConfig;
   private accessToken: string | null = null;
   private tokenExpireTime: number = 0;
+  private readonly GO_SERVICE_URL = 'http://localhost:8889';
 
   constructor(config: MessageArchiveConfig) {
     this.config = config;
@@ -54,6 +62,91 @@ export class MessageArchiveService {
   }
 
   /**
+   * 健康检查 - 测试Go服务连接
+   */
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await axios.get(`${this.GO_SERVICE_URL}/health`, {
+        timeout: 5000
+      });
+      return response.status === 200;
+    } catch (error) {
+      console.error('Go服务连接失败:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 通过Go服务获取聊天记录数据（推荐方法）
+   * @param seq 起始序号，首次传0
+   * @param limit 限制数量，最大1000
+   * @param timeout 超时时间，秒
+   */
+  async getChatRecordsFromGoService(seq: number = 0, limit: number = 100, timeout: number = 3): Promise<ChatRecord[]> {
+    try {
+      console.log(`正在通过Go服务获取聊天数据，seq: ${seq}, limit: ${limit}`);
+      
+      const response = await axios.post(`${this.GO_SERVICE_URL}/get_chat_data`, {
+        seq,
+        limit,
+        timeout
+      }, {
+        timeout: 10000, // HTTP请求超时10秒
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data: ChatDataResponse = response.data;
+      
+      if (data.errcode !== 0) {
+        throw new Error(`获取聊天数据失败: ${data.errmsg}`);
+      }
+
+      console.log(`✅ 成功获取 ${data.chatdata?.length || 0} 条聊天记录`);
+      return data.chatdata || [];
+      
+    } catch (error) {
+      console.error('通过Go服务获取聊天数据失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 分页获取所有聊天记录
+   * @param startSeq 起始序号
+   * @param batchSize 每批次大小
+   */
+  async getAllChatRecordsFromGoService(startSeq: number = 0, batchSize: number = 100): Promise<ChatRecord[]> {
+    const allRecords: ChatRecord[] = [];
+    let currentSeq = startSeq;
+    
+    try {
+      while (true) {
+        const records = await this.getChatRecordsFromGoService(currentSeq, batchSize);
+        
+        if (records.length === 0) {
+          break; // 没有更多数据
+        }
+        
+        allRecords.push(...records);
+        console.log(`已获取 ${allRecords.length} 条记录`);
+        
+        // 更新seq为最后一条记录的seq + 1
+        currentSeq += records.length;
+        
+        // 避免请求过于频繁
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      return allRecords;
+    } catch (error) {
+      console.error('批量获取聊天记录失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 获取会话内容存档内部群信息
    */
   async getGroupChatData(roomId: string): Promise<any> {
@@ -79,21 +172,36 @@ export class MessageArchiveService {
   }
 
   /**
-   * 拉取会话记录
-   * 注意：企业微信会话存档需要特殊的secret，不是普通应用的secret
+   * 拉取会话记录（原有方法，保持兼容性）
+   * 
+   * 重要说明：企业微信会话存档无法通过REST API直接获取聊天数据！
+   * 官方要求使用原生SDK (libWeWorkFinanceSdk_C.so)
+   * 
+   * 解决方案：
+   * 1. 使用 https://github.com/Hanson/WeworkMsg (Go封装的HTTP服务)
+   * 2. 或使用 https://github.com/go-laoji/wecom.dev-audit
    */
   async getChatRecords(seq: number = 0, limit: number = 1000): Promise<ChatRecord[]> {
     try {
+      // 优先尝试使用Go服务
+      if (await this.healthCheck()) {
+        console.log('✅ Go服务可用，使用Go服务获取聊天数据');
+        return await this.getChatRecordsFromGoService(seq, limit);
+      }
+
+      // 如果Go服务不可用，显示说明信息
+      console.log('⚠️ Go服务不可用，返回说明信息');
+      
       // 检查是否配置了会话存档专用的secret
       if (!process.env.WEIXIN_MSGAUDIT_SECRET) {
         throw new Error('未配置会话存档专用的WEIXIN_MSGAUDIT_SECRET');
       }
 
-             // 获取会话存档专用的access_token
-       const msgauditSecret = process.env.WEIXIN_MSGAUDIT_SECRET;
-       const tokenResponse = await axios.get(
-         `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${this.config.corpId}&corpsecret=${msgauditSecret}`
-       );
+      // 获取会话存档专用的access_token
+      const msgauditSecret = process.env.WEIXIN_MSGAUDIT_SECRET;
+      const tokenResponse = await axios.get(
+        `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${this.config.corpId}&corpsecret=${msgauditSecret}`
+      );
 
       if (tokenResponse.data.errcode !== 0) {
         throw new Error(`获取会话存档access_token失败: ${tokenResponse.data.errmsg}`);
@@ -101,6 +209,7 @@ export class MessageArchiveService {
 
       const accessToken = tokenResponse.data.access_token;
       
+      // 先检查许可用户列表（这个API是有效的）
       const response = await axios.post(
         `https://qyapi.weixin.qq.com/cgi-bin/msgaudit/get_permit_user_list?access_token=${accessToken}`,
         {}
@@ -109,22 +218,33 @@ export class MessageArchiveService {
       console.log('会话存档API响应:', response.data);
 
       if (response.data.errcode === 0) {
-        // 如果是查询许可用户列表成功，则尝试拉取聊天数据
-        const chatResponse = await axios.post(
-          `https://qyapi.weixin.qq.com/cgi-bin/msgaudit/get_chat_data?access_token=${accessToken}`,
-          {
-            seq: seq,
-            limit: limit
-          }
-        );
+        console.log('✅ 许可用户列表获取成功，用户ID:', response.data.ids);
+        
+        // 企业微信会话存档的聊天数据拉取必须使用原生SDK
+        // 这里返回一个说明性的错误，指导用户正确的实现方式
+        throw new Error(`
+🚨 企业微信会话存档限制说明：
 
-        if (chatResponse.data.errcode === 0) {
-          return chatResponse.data.chatdata || [];
-        } else {
-          throw new Error(`拉取会话记录失败: ${chatResponse.data.errmsg}`);
-        }
+❌ 问题：REST API无法直接获取聊天数据（/cgi-bin/msgaudit/get_chat_data 返回404）
+
+✅ 解决方案：
+1. 使用企业微信官方原生SDK (libWeWorkFinanceSdk_C.so)
+2. 推荐开源方案：
+   • https://github.com/Hanson/WeworkMsg (Go语言HTTP服务)
+   • https://github.com/go-laoji/wecom.dev-audit
+
+📋 当前状态：
+• 许可用户: ${response.data.ids?.join(', ') || '无'}
+• 会话存档权限: ✅ 已开启
+• Go服务状态: ❌ 不可用 (请确保 http://localhost:8889 服务正在运行)
+
+🔧 快速部署建议：
+1. 启动 WeworkMsg Go服务 (端口8889)
+2. 配置 .env 和 private_key.pem  
+3. 调用 getChatRecordsFromGoService() 方法获取数据
+        `);
       } else {
-        throw new Error(`会话存档权限检查失败: ${response.data.errmsg}`);
+        throw new Error(`获取许可用户列表失败: ${response.data.errmsg}`);
       }
     } catch (error) {
       console.error('拉取会话记录失败:', error);
@@ -139,8 +259,15 @@ export class MessageArchiveService {
     try {
       console.log('开始处理会话存档通知...');
       
-      // 1. 拉取最新的会话记录
-      const chatRecords = await this.getChatRecords();
+      // 1. 优先使用Go服务拉取最新的会话记录
+      let chatRecords: ChatRecord[] = [];
+      
+      if (await this.healthCheck()) {
+        chatRecords = await this.getChatRecordsFromGoService();
+      } else {
+        console.log('⚠️ Go服务不可用，跳过会话记录处理');
+        return;
+      }
       
       console.log(`拉取到 ${chatRecords.length} 条会话记录`);
       
@@ -197,9 +324,9 @@ export class MessageArchiveService {
       // 解密消息内容
       const decryptedContent = this.decryptMessage(record.content);
       console.log(`文本消息内容: ${decryptedContent}`);
-      
-      // TODO: 这里可以调用你的业务逻辑
-      // 例如：更新群消息记录、触发监控逻辑等
+    
+    // TODO: 这里可以调用你的业务逻辑
+    // 例如：更新群消息记录、触发监控逻辑等
     } catch (error) {
       console.error('解密文本消息失败:', error);
     }
@@ -271,4 +398,4 @@ export class MessageArchiveService {
   }
 }
 
-export default MessageArchiveService; 
+export default MessageArchiveService;

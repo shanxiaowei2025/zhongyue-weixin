@@ -7,6 +7,7 @@ import config from './config/default';
 import { MonitorService } from './services/MonitorService';
 import { CallbackStatsService } from './services/CallbackStatsService';
 import WeixinCallbackController from './controllers/WeixinCallbackController';
+import { MessageArchiveService } from './services/MessageArchiveService';
 
 // 更详细的环境变量调试选项
 const dotenvOptions = {
@@ -133,6 +134,245 @@ app.post('/api/simulate/message', async (req, res) => {
   }
 });
 
+// 添加手动检查响应情况接口
+app.post('/api/check-responses', async (req, res) => {
+  try {
+    console.log('手动触发检查响应情况');
+    const monitorService = new MonitorService();
+    await monitorService.checkAllGroupsResponse();
+    res.json({ 
+      success: true, 
+      message: '响应检查完成'
+    });
+  } catch (error: any) {
+    console.error('检查响应失败:', error);
+    res.status(500).json({ error: '检查响应失败', details: error.message });
+  }
+});
+
+// 添加会话存档相关接口
+app.get('/api/archive/health', async (req, res) => {
+  try {
+    const messageService = new MessageArchiveService({
+      corpId: 'wwb477a7d74c001523',
+      secret: '7ekI6yLsJNbkuusoeP2Vez9t_7Fz0yBDW3HrPLgY96M',
+      privateKey: `-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCnKOK9rpD/XTeb
+NSPKWItJ5x0KAnEAgcpZOG5rY6+gpnX+NhKmWNea4m9ihd26z5spTzh1CFPtQ7qL
+wZOX0LBHS5szhqEq8U5xbLHYaYhMJQAaTeHCioEREHe4oodxMONxgFS8A3eIQzGk
+8nkyguGIEDjHKsV7KG1spqqe0PfFUzFkhnigG1xTjR9QdKE2PEqOceyuceaaMtE6
+TcjOC5V6l3Tv7UUVt1edqD80loAFNOm98ESziV7YEHPZKO2o2y5yHzzJKDbhAXBu
+50Gd4r3CBhDsLdWq+G1RnT5OLdjzrdIhL11PMFO2ly5iU1y8RkRYQB+zVHOjIG97
+4RdNKaJtAgMBAAECggEACsVwruZTw5C/J4oqDzzbZNy2m1GC9JRodI1VWCgpRgHT
+8piLZRqucfWLVd7oZcRA7E2Fhs0Nk2lc2OqVVyAEa+OsUYqoUfsQofBuGVLbjISJ
+2CgSlxWTsYTNIiGe9qU+0q6BR0g16Jrj1Qwm0SFr5PeeoP7ZkNEPFAQ9VFSE0rsp
+9toTncKgW/qGYvr6m4gIGwyfxi8O5PKDQ1eeftWZB66FyxfrcxB41umkRQT7GuyY
+CtTIVeibzp7hjDWwIut4NWubB/8pxf0MmUvg2ZXWZjQnM4GG4TRqc4rxIweaqeI0
+yrgpeGTexMH3essAPcZYwOJgmiXbeCLMRcR2bPcUYQKBgQDSLSUamzJ+8KANZT1L
+wj4EVdg5zbCVbi/9lr3h63L70UUgfyfC2ZIlxMHNjEwWGaZu+79W5P3l7A+93Uq6
+iWwldZlgm1Vm75YP4jyXJ5zGOge/8UkyDo6hoVm3qUQZeeCBbgOgqFpOqo9V1dk8
+gb4Mjo0nPzvJ8FK+8DgFu+YzJQKBgQDLmsubQXRn3g2Z3Bl5ESSrRTnO1eoMnCJW
+KdftxLRfY2SMPAyVZFdk7UzSIAA08ZODV0RwR9mCD8moRzRxCj2PoYr8RXQjGuUB
+t9wvEkTBZQrmnKUV5ZBuhHjUqhTeHsIPO/5xJUUBfjHm7isDoSB24TY+rkOa99V8
+Ip8N9wOzqQKBgQCgmkyzAwrYA0laUxU+scQwDeT3bpzT4uobDjg0zXUExcnb5i5c
+72KFJ8+sINv3O0x5nDd+z+bP7c2tmM7EscQI787vCmN9D/EMXCVOn79lnexUGK2E
+6ajGC4SCGn7mNMKARK/S8TJo0F5NCedBHCc8cyWbau9mBRVFwEwe3ZEvXQKBgE8s
+sdJ9AJRHgEh9k5ZFuVm0wMcS3kHrEVsqSGKYpH+XegkibM5HR8jikoX/lbUA4Bkp
+/V4gQo/WLdf3YIg4sDnDWvXA2GmyUq15XvEbDIucDEIjVfsO2zxu3UHtpdG+aj5c
+WRSMpqnu9d7UbPurU6GG8H4ta/K+P1FXcTyP+uuJAoGBAIbRTwgUMg341txNiZXm
+uftIHuH0jVa9ytUYUwZ0U7MbBeYuGpaO7dMBbSz9w0n5m5cutTCPv77UW8gxYkQt
+t4uXwIg2j6fHF7wuE9opgVVZDGUoHIbIXoAHOtHBUTFAr23u3TXrl0rg283KNSGC
+E3skLLFbCs1RgRWkaxNq8sO4
+-----END PRIVATE KEY-----`
+    });
+
+    const isHealthy = await messageService.healthCheck();
+    res.json({ 
+      status: isHealthy ? 'healthy' : 'unhealthy',
+      service: 'wework-archive-go-service',
+      url: 'http://localhost:8889',
+      message: isHealthy ? 'Go服务连接正常' : 'Go服务连接失败，请确保WeworkMsg服务正在运行'
+    });
+  } catch (error: any) {
+    res.status(500).json({ 
+      status: 'error',
+      error: error.message 
+    });
+  }
+});
+
+// 获取聊天记录接口
+app.get('/api/archive/records', async (req, res) => {
+  try {
+    const { seq = '0', limit = '100', timeout = '3' } = req.query;
+    
+    const messageService = new MessageArchiveService({
+      corpId: 'wwb477a7d74c001523',
+      secret: '7ekI6yLsJNbkuusoeP2Vez9t_7Fz0yBDW3HrPLgY96M',
+      privateKey: `-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCnKOK9rpD/XTeb
+NSPKWItJ5x0KAnEAgcpZOG5rY6+gpnX+NhKmWNea4m9ihd26z5spTzh1CFPtQ7qL
+wZOX0LBHS5szhqEq8U5xbLHYaYhMJQAaTeHCioEREHe4oodxMONxgFS8A3eIQzGk
+8nkyguGIEDjHKsV7KG1spqqe0PfFUzFkhnigG1xTjR9QdKE2PEqOceyuceaaMtE6
+TcjOC5V6l3Tv7UUVt1edqD80loAFNOm98ESziV7YEHPZKO2o2y5yHzzJKDbhAXBu
+50Gd4r3CBhDsLdWq+G1RnT5OLdjzrdIhL11PMFO2ly5iU1y8RkRYQB+zVHOjIG97
+4RdNKaJtAgMBAAECggEACsVwruZTw5C/J4oqDzzbZNy2m1GC9JRodI1VWCgpRgHT
+8piLZRqucfWLVd7oZcRA7E2Fhs0Nk2lc2OqVVyAEa+OsUYqoUfsQofBuGVLbjISJ
+2CgSlxWTsYTNIiGe9qU+0q6BR0g16Jrj1Qwm0SFr5PeeoP7ZkNEPFAQ9VFSE0rsp
+9toTncKgW/qGYvr6m4gIGwyfxi8O5PKDQ1eeftWZB66FyxfrcxB41umkRQT7GuyY
+CtTIVeibzp7hjDWwIut4NWubB/8pxf0MmUvg2ZXWZjQnM4GG4TRqc4rxIweaqeI0
+yrgpeGTexMH3essAPcZYwOJgmiXbeCLMRcR2bPcUYQKBgQDSLSUamzJ+8KANZT1L
+wj4EVdg5zbCVbi/9lr3h63L70UUgfyfC2ZIlxMHNjEwWGaZu+79W5P3l7A+93Uq6
+iWwldZlgm1Vm75YP4jyXJ5zGOge/8UkyDo6hoVm3qUQZeeCBbgOgqFpOqo9V1dk8
+gb4Mjo0nPzvJ8FK+8DgFu+YzJQKBgQDLmsubQXRn3g2Z3Bl5ESSrRTnO1eoMnCJW
+KdftxLRfY2SMPAyVZFdk7UzSIAA08ZODV0RwR9mCD8moRzRxCj2PoYr8RXQjGuUB
+t9wvEkTBZQrmnKUV5ZBuhHjUqhTeHsIPO/5xJUUBfjHm7isDoSB24TY+rkOa99V8
+Ip8N9wOzqQKBgQCgmkyzAwrYA0laUxU+scQwDeT3bpzT4uobDjg0zXUExcnb5i5c
+72KFJ8+sINv3O0x5nDd+z+bP7c2tmM7EscQI787vCmN9D/EMXCVOn79lnexUGK2E
+6ajGC4SCGn7mNMKARK/S8TJo0F5NCedBHCc8cyWbau9mBRVFwEwe3ZEvXQKBgE8s
+sdJ9AJRHgEh9k5ZFuVm0wMcS3kHrEVsqSGKYpH+XegkibM5HR8jikoX/lbUA4Bkp
+/V4gQo/WLdf3YIg4sDnDWvXA2GmyUq15XvEbDIucDEIjVfsO2zxu3UHtpdG+aj5c
+WRSMpqnu9d7UbPurU6GG8H4ta/K+P1FXcTyP+uuJAoGBAIbRTwgUMg341txNiZXm
+uftIHuH0jVa9ytUYUwZ0U7MbBeYuGpaO7dMBbSz9w0n5m5cutTCPv77UW8gxYkQt
+t4uXwIg2j6fHF7wuE9opgVVZDGUoHIbIXoAHOtHBUTFAr23u3TXrl0rg283KNSGC
+E3skLLFbCs1RgRWkaxNq8sO4
+-----END PRIVATE KEY-----`
+    });
+
+    const records = await messageService.getChatRecordsFromGoService(
+      parseInt(seq as string), 
+      parseInt(limit as string),
+      parseInt(timeout as string)
+    );
+    
+    res.json({
+      success: true,
+      count: records.length,
+      data: records,
+      params: {
+        seq: parseInt(seq as string),
+        limit: parseInt(limit as string),
+        timeout: parseInt(timeout as string)
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// 批量获取所有聊天记录接口
+app.get('/api/archive/records/all', async (req, res) => {
+  try {
+    const { startSeq = '0', batchSize = '100' } = req.query;
+    
+    const messageService = new MessageArchiveService({
+      corpId: 'wwb477a7d74c001523',
+      secret: '7ekI6yLsJNbkuusoeP2Vez9t_7Fz0yBDW3HrPLgY96M',
+      privateKey: `-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCnKOK9rpD/XTeb
+NSPKWItJ5x0KAnEAgcpZOG5rY6+gpnX+NhKmWNea4m9ihd26z5spTzh1CFPtQ7qL
+wZOX0LBHS5szhqEq8U5xbLHYaYhMJQAaTeHCioEREHe4oodxMONxgFS8A3eIQzGk
+8nkyguGIEDjHKsV7KG1spqqe0PfFUzFkhnigG1xTjR9QdKE2PEqOceyuceaaMtE6
+TcjOC5V6l3Tv7UUVt1edqD80loAFNOm98ESziV7YEHPZKO2o2y5yHzzJKDbhAXBu
+50Gd4r3CBhDsLdWq+G1RnT5OLdjzrdIhL11PMFO2ly5iU1y8RkRYQB+zVHOjIG97
+4RdNKaJtAgMBAAECggEACsVwruZTw5C/J4oqDzzbZNy2m1GC9JRodI1VWCgpRgHT
+8piLZRqucfWLVd7oZcRA7E2Fhs0Nk2lc2OqVVyAEa+OsUYqoUfsQofBuGVLbjISJ
+2CgSlxWTsYTNIiGe9qU+0q6BR0g16Jrj1Qwm0SFr5PeeoP7ZkNEPFAQ9VFSE0rsp
+9toTncKgW/qGYvr6m4gIGwyfxi8O5PKDQ1eeftWZB66FyxfrcxB41umkRQT7GuyY
+CtTIVeibzp7hjDWwIut4NWubB/8pxf0MmUvg2ZXWZjQnM4GG4TRqc4rxIweaqeI0
+yrgpeGTexMH3essAPcZYwOJgmiXbeCLMRcR2bPcUYQKBgQDSLSUamzJ+8KANZT1L
+wj4EVdg5zbCVbi/9lr3h63L70UUgfyfC2ZIlxMHNjEwWGaZu+79W5P3l7A+93Uq6
+iWwldZlgm1Vm75YP4jyXJ5zGOge/8UkyDo6hoVm3qUQZeeCBbgOgqFpOqo9V1dk8
+gb4Mjo0nPzvJ8FK+8DgFu+YzJQKBgQDLmsubQXRn3g2Z3Bl5ESSrRTnO1eoMnCJW
+KdftxLRfY2SMPAyVZFdk7UzSIAA08ZODV0RwR9mCD8moRzRxCj2PoYr8RXQjGuUB
+t9wvEkTBZQrmnKUV5ZBuhHjUqhTeHsIPO/5xJUUBfjHm7isDoSB24TY+rkOa99V8
+Ip8N9wOzqQKBgQCgmkyzAwrYA0laUxU+scQwDeT3bpzT4uobDjg0zXUExcnb5i5c
+72KFJ8+sINv3O0x5nDd+z+bP7c2tmM7EscQI787vCmN9D/EMXCVOn79lnexUGK2E
+6ajGC4SCGn7mNMKARK/S8TJo0F5NCedBHCc8cyWbau9mBRVFwUwe3ZEvXQKBgE8s
+sdJ9AJRHgEh9k5ZFuVm0wMcS3kHrEVsqSGKYpH+XegkibM5HR8jikoX/lbUA4Bkp
+/V4gQo/WLdf3YIg4sDnDWvXA2GmyUq15XvEbDIucDEIjVfsO2zxu3UHtpdG+aj5c
+WRSMpqnu9d7UbPurU6GG8H4ta/K+P1FXcTyP+uuJAoGBAIbRTwgUMg341txNiZXm
+uftIHuH0jVa9ytUYUwZ0U7MbBeYuGpaO7dMBbSz9w0n5m5cutTCPv77UW8gxYkQt
+t4uXwIg2j6fHF7wuE9opgVVZDGUoHIbIXoAHOtHBUTFAr23u3TXrl0rg283KNSGC
+E3skLLFbCs1RgRWkaxNq8sO4
+-----END PRIVATE KEY-----`
+    });
+
+    const allRecords = await messageService.getAllChatRecordsFromGoService(
+      parseInt(startSeq as string), 
+      parseInt(batchSize as string)
+    );
+    
+    res.json({
+      success: true,
+      total: allRecords.length,
+      data: allRecords,
+      params: {
+        startSeq: parseInt(startSeq as string),
+        batchSize: parseInt(batchSize as string)
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// 处理会话存档通知接口
+app.post('/api/archive/process', async (req, res) => {
+  try {
+    const messageService = new MessageArchiveService({
+      corpId: 'wwb477a7d74c001523',
+      secret: '7ekI6yLsJNbkuusoeP2Vez9t_7Fz0yBDW3HrPLgY96M',
+      privateKey: `-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCnKOK9rpD/XTeb
+NSPKWItJ5x0KAnEAgcpZOG5rY6+gpnX+NhKmWNea4m9ihd26z5spTzh1CFPtQ7qL
+wZOX0LBHS5szhqEq8U5xbLHYaYhMJQAaTeHCioEREHe4oodxMONxgFS8A3eIQzGk
+8nkyguGIEDjHKsV7KG1spqqe0PfFUzFkhnigG1xTjR9QdKE2PEqOceyuceaaMtE6
+TcjOC5V6l3Tv7UUVt1edqD80loAFNOm98ESziV7YEHPZKO2o2y5yHzzJKDbhAXBu
+50Gd4r3CBhDsLdWq+G1RnT5OLdjzrdIhL11PMFO2ly5iU1y8RkRYQB+zVHOjIG97
+4RdNKaJtAgMBAAECggEACsVwruZTw5C/J4oqDzzbZNy2m1GC9JRodI1VWCgpRgHT
+8piLZRqucfWLVd7oZcRA7E2Fhs0Nk2lc2OqVVyAEa+OsUYqoUfsQofBuGVLbjISJ
+2CgSlxWTsYTNIiGe9qU+0q6BR0g16Jrj1Qwm0SFr5PeeoP7ZkNEPFAQ9VFSE0rsp
+9toTncKgW/qGYvr6m4gIGwyfxi8O5PKDQ1eeftWZB66FyxfrcxB41umkRQT7GuyY
+CtTIVeibzp7hjDWwIut4NWubB/8pxf0MmUvg2ZXWZjQnM4GG4TRqc4rxIweaqeI0
+yrgpeGTexMH3essAPcZYwOJgmiXbeCLMRcR2bPcUYQKBgQDSLSUamzJ+8KANZT1L
+wj4EVdg5zbCVbi/9lr3h63L70UUgfyfC2ZIlxMHNjEwWGaZu+79W5P3l7A+93Uq6
+iWwldZlgm1Vm75YP4jyXJ5zGOge/8UkyDo6hoVm3qUQZeeCBbgOgqFpOqo9V1dk8
+gb4Mjo0nPzvJ8FK+8DgFu+YzJQKBgQDLmsubQXRn3g2Z3Bl5ESSrRTnO1eoMnCJW
+KdftxLRfY2SMPAyVZFdk7UzSIAA08ZODV0RwR9mCD8moRzRxCj2PoYr8RXQjGuUB
+t9wvEkTBZQrmnKUV5ZBuhHjUqhTeHsIPO/5xJUUBfjHm7isDoSB24TY+rkOa99V8
+Ip8N9wOzqQKBgQCgmkyzAwrYA0laUxU+scQwDeT3bpzT4uobDjg0zXUExcnb5i5c
+72KFJ8+sINv3O0x5nDd+z+bP7c2tmM7EscQI787vCmN9D/EMXCVOn79lnexUGK2E
+6ajGC4SCGn7mNMKARK/S8TJo0F5NCedBHCc8cyWbau9mBRVFwEwe3ZEvXQKBgE8s
+sdJ9AJRHgEh9k5ZFuVm0wMcS3kHrEVsqSGKYpH+XegkibM5HR8jikoX/lbUA4Bkp
+/V4gQo/WLdf3YIg4sDnDWvXA2GmyUq15XvEbDIucDEIjVfsO2zxu3UHtpdG+aj5c
+WRSMpqnu9d7UbPurU6GG8H4ta/K+P1FXcTyP+uuJAoGBAIbRTwgUMg341txNiZXm
+uftIHuH0jVa9ytUYUwZ0U7MbBeYuGpaO7dMBbSz9w0n5m5cutTCPv77UW8gxYkQt
+t4uXwIg2j6fHF7wuE9opgVVZDGUoHIbIXoAHOtHBUTFAr23u3TXrl0rg283KNSGC
+E3skLLFbCs1RgRWkaxNq8sO4
+-----END PRIVATE KEY-----`
+    });
+
+    await messageService.processMsgAuditNotify();
+    
+    res.json({
+      success: true,
+      message: '会话存档通知处理完成'
+    });
+  } catch (error: any) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 // 初始化应用（简化版，不再需要数据库连接）
 const init = async () => {
   try {
@@ -162,6 +402,14 @@ const init = async () => {
       console.log('🔍 监控接口:');
       console.log(`  GET  http://localhost:${port}/api/health        - 健康检查和基本统计`);
       console.log(`  GET  http://localhost:${port}/api/callback/stats - 详细回调统计`);
+      console.log(`  POST http://localhost:${port}/api/sync          - 手动同步群组信息`);
+      console.log(`  POST http://localhost:${port}/api/check-responses - 手动检查响应情况`);
+      console.log('');
+      console.log('📄 会话存档接口:');
+      console.log(`  GET  http://localhost:${port}/api/archive/health - Go服务健康检查`);
+      console.log(`  GET  http://localhost:${port}/api/archive/records?seq=0&limit=100 - 获取聊天记录`);
+      console.log(`  GET  http://localhost:${port}/api/archive/records/all?startSeq=0&batchSize=100 - 批量获取所有记录`);
+      console.log(`  POST http://localhost:${port}/api/archive/process - 处理会话存档通知`);
       if (process.env.NODE_ENV !== 'production') {
         console.log(`  POST http://localhost:${port}/api/callback/reset-stats - 重置统计（仅开发环境）`);
       }
