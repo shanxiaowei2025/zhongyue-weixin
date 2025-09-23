@@ -94,13 +94,17 @@ export class WeixinCallbackController {
         if (result) {
         console.log('验证成功，返回echostr:', result);
           this.callbackStats.recordVerification(true);
-          // 设置正确的Content-Type并返回纯文本
-          res.set('Content-Type', 'text/plain');
-          res.status(200).send(result);
+          // 设置企业微信期望的响应头
+          res.set({
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          });
+          res.status(200).end(result);
         } else {
         console.error('URL验证失败');
           this.callbackStats.recordVerification(false, 'URL验证失败');
-          res.status(401).send('验证失败');
+          res.status(403).end('验证失败');
         }
     } catch (error) {
       console.error('处理URL验证请求失败:', error);

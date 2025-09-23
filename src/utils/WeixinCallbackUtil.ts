@@ -179,28 +179,31 @@ export class WeixinCallbackUtil {
     console.log('- 解码后echostr:', decodedEchostr);
     
     try {
-      // 首先尝试解密echostr
-      console.log('- 尝试解密echostr...');
+      // 企业微信URL验证流程：
+      // 1. 首先尝试将echostr作为明文进行签名验证
+      console.log('- 尝试明文验证...');
+      if (this.verifySignature(msg_signature, timestamp, nonce, decodedEchostr)) {
+        console.log('- 明文签名验证成功，返回原始echostr');
+        return decodedEchostr;
+      }
+      
+      // 2. 如果明文验证失败，尝试解密echostr
+      console.log('- 明文验证失败，尝试解密echostr...');
       const decryptedEchostr = this.decryptEchoStr(decodedEchostr);
       
       if (decryptedEchostr) {
         console.log('- echostr解密成功:', decryptedEchostr);
         // 使用解密后的字符串进行签名验证
-        if (!this.verifySignature(msg_signature, timestamp, nonce, decryptedEchostr)) {
-          console.log('- 签名验证失败（使用解密后的echostr）');
+        if (this.verifySignature(msg_signature, timestamp, nonce, decryptedEchostr)) {
+          console.log('- 解密后签名验证成功');
+          return decryptedEchostr;
+        } else {
+          console.log('- 解密后签名验证失败');
           return null;
         }
-        console.log('- 签名验证成功（使用解密后的echostr）');
-        return decryptedEchostr;
       } else {
-        console.log('- echostr解密失败，尝试使用原始字符串...');
-        // 解密失败，使用原始字符串进行验证
-        if (!this.verifySignature(msg_signature, timestamp, nonce, decodedEchostr)) {
-          console.log('- 签名验证失败（使用原始echostr）');
-          return null;
-        }
-        console.log('- 签名验证成功（使用原始echostr）');
-        return decodedEchostr;
+        console.log('- echostr解密失败');
+        return null;
       }
     } catch (error) {
       console.error('- 处理验证请求异常:', error);
@@ -226,40 +229,54 @@ export class WeixinCallbackUtil {
       
       // 将Base64编码的密文解码为Buffer
       const encrypted = Buffer.from(echostr, 'base64');
+      console.log('- 加密数据长度:', encrypted.length);
       
-      // 使用AES-256-CBC模式解密
+      // 解密
       const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, iv);
-      decipher.setAutoPadding(false); // 关闭自动填充，企业微信使用PKCS#7填充
+      decipher.setAutoPadding(false);
       
-      let decrypted = Buffer.concat([
+      const decrypted = Buffer.concat([
         decipher.update(encrypted),
         decipher.final()
       ]);
       
-      // 去除PKCS#7填充
+      console.log('- 解密后数据长度:', decrypted.length);
+      console.log('- 解密后数据（前50字节）:', decrypted.slice(0, 50).toString('hex'));
+      
+      // 移除填充
       const padLength = decrypted[decrypted.length - 1];
-      if (padLength < 1 || padLength > 32) {
-        console.error('无效的填充值:', padLength);
+      console.log('- 填充长度:', padLength);
+      
+      if (padLength > 16 || padLength < 1) {
+        console.error('无效的填充长度:', padLength);
         return null;
       }
-      decrypted = decrypted.slice(0, -padLength);
       
-      // 检查数据格式：16字节随机字符串 + 4字节消息长度 + 消息内容 + CorpId
-      if (decrypted.length < 20 + this.corpId.length) {
-        console.error('解密后数据长度不足');
+      const unpadded = decrypted.slice(0, decrypted.length - padLength);
+      console.log('- 去填充后数据长度:', unpadded.length);
+      
+      if (unpadded.length < 20) {
+        console.error('数据长度不足，无法解析');
         return null;
       }
       
       // 取出消息内容
-      const random = decrypted.slice(0, 16);
-      const msgLenBuf = decrypted.slice(16, 20);
+      const random = unpadded.slice(0, 16);
+      const msgLenBuf = unpadded.slice(16, 20);
       const msgLen = msgLenBuf.readUInt32BE(0);
-      const msgContent = decrypted.slice(20, 20 + msgLen);
-      const receivedCorpId = decrypted.slice(20 + msgLen).toString();
       
       console.log('- 解析解密结果:');
       console.log('  - 随机字符串(16字节):', random.toString('hex'));
       console.log('  - 消息长度(4字节):', msgLen);
+      
+      if (msgLen > unpadded.length - 20) {
+        console.error('消息长度超出数据范围:', msgLen, '可用数据:', unpadded.length - 20);
+        return null;
+      }
+      
+      const msgContent = unpadded.slice(20, 20 + msgLen);
+      const receivedCorpId = unpadded.slice(20 + msgLen).toString();
+      
       console.log('  - 接收到的企业ID:', receivedCorpId);
       console.log('  - 期望的企业ID:', this.corpId);
       
