@@ -163,8 +163,8 @@ export class WeixinCallbackUtil {
   }
 
   /**
-   * 处理企业微信回调验证请求
-   * @param msg_signature 企业微信加密签名
+   * 处理企业微信URL验证请求
+   * @param msg_signature 消息签名
    * @param timestamp 时间戳
    * @param nonce 随机数
    * @param echostr 随机字符串（可能加密也可能明文）
@@ -179,20 +179,29 @@ export class WeixinCallbackUtil {
     console.log('- 解码后echostr:', decodedEchostr);
     
     try {
-      // 在企业微信URL验证阶段，echostr通常是明文
-      // 我们只需要验证签名，然后返回原始的echostr
-      if (!this.verifySignature(msg_signature, timestamp, nonce, decodedEchostr)) {
-        console.log('- 签名验证失败');
-        return null;
+      // 首先尝试解密echostr
+      console.log('- 尝试解密echostr...');
+      const decryptedEchostr = this.decryptEchoStr(decodedEchostr);
+      
+      if (decryptedEchostr) {
+        console.log('- echostr解密成功:', decryptedEchostr);
+        // 使用解密后的字符串进行签名验证
+        if (!this.verifySignature(msg_signature, timestamp, nonce, decryptedEchostr)) {
+          console.log('- 签名验证失败（使用解密后的echostr）');
+          return null;
+        }
+        console.log('- 签名验证成功（使用解密后的echostr）');
+        return decryptedEchostr;
+      } else {
+        console.log('- echostr解密失败，尝试使用原始字符串...');
+        // 解密失败，使用原始字符串进行验证
+        if (!this.verifySignature(msg_signature, timestamp, nonce, decodedEchostr)) {
+          console.log('- 签名验证失败（使用原始echostr）');
+          return null;
+        }
+        console.log('- 签名验证成功（使用原始echostr）');
+        return decodedEchostr;
       }
-      
-      console.log('- 签名验证成功');
-      
-      // 对于URL验证，直接返回echostr（明文）
-      // 企业微信会检查返回的内容是否与发送的echostr一致
-      console.log('- 返回原始echostr:', decodedEchostr);
-      
-      return decodedEchostr;
     } catch (error) {
       console.error('- 处理验证请求异常:', error);
       return null;
