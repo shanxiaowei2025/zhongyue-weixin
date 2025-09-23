@@ -71,27 +71,12 @@ export class WeixinCallbackController {
    */
   private handleVerification(req: Request, res: Response) {
     try {
-      console.log('处理URL验证请求');
-      console.log('完整请求URL:', req.originalUrl);
-      console.log('请求路径:', req.path);
-      console.log('请求方法:', req.method);
-      console.log('请求头:', JSON.stringify(req.headers, null, 2));
-      console.log('查询参数:', JSON.stringify(req.query, null, 2));
-      console.log('请求体:', JSON.stringify(req.body, null, 2));
-      
-      const { 
-        msg_signature, timestamp, nonce, echostr
-      } = req.query as Record<string, string>;
-
-      if (!msg_signature || !timestamp || !nonce || !echostr) {
-        console.error('URL验证请求缺少必要参数');
-        console.error('缺少的参数详情:');
-        console.error('- msg_signature:', msg_signature ? '存在' : '缺少');
-        console.error('- timestamp:', timestamp ? '存在' : '缺少');
-        console.error('- nonce:', nonce ? '存在' : '缺少');
-        console.error('- echostr:', echostr ? '存在' : '缺少');
-        return res.status(400).send('Bad Request');
-      }
+      const { msg_signature, timestamp, nonce, echostr } = req.query as {
+        msg_signature: string;
+        timestamp: string;
+        nonce: string;
+        echostr: string;
+      };
       
       console.log('验证参数:');
       console.log('- msg_signature:', msg_signature);
@@ -109,7 +94,9 @@ export class WeixinCallbackController {
         if (result) {
         console.log('验证成功，返回echostr:', result);
           this.callbackStats.recordVerification(true);
-          res.send(result);
+          // 设置正确的Content-Type并返回纯文本
+          res.set('Content-Type', 'text/plain');
+          res.status(200).send(result);
         } else {
         console.error('URL验证失败');
           this.callbackStats.recordVerification(false, 'URL验证失败');
