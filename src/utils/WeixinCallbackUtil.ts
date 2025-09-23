@@ -180,30 +180,24 @@ export class WeixinCallbackUtil {
     
     try {
       // 企业微信URL验证流程：
-      // 1. 首先尝试将echostr作为明文进行签名验证
-      console.log('- 尝试明文验证...');
-      if (this.verifySignature(msg_signature, timestamp, nonce, decodedEchostr)) {
-        console.log('- 明文签名验证成功，返回原始echostr');
-        return decodedEchostr;
+      // 1. 首先进行签名验证确保请求合法
+      console.log('- 进行签名验证...');
+      if (!this.verifySignature(msg_signature, timestamp, nonce, decodedEchostr)) {
+        console.log('- 签名验证失败');
+        return null;
       }
       
-      // 2. 如果明文验证失败，尝试解密echostr
-      console.log('- 明文验证失败，尝试解密echostr...');
+      console.log('- 签名验证成功，尝试解密echostr...');
+      
+      // 2. 签名验证成功后，尝试解密echostr
       const decryptedEchostr = this.decryptEchoStr(decodedEchostr);
       
       if (decryptedEchostr) {
-        console.log('- echostr解密成功:', decryptedEchostr);
-        // 使用解密后的字符串进行签名验证
-        if (this.verifySignature(msg_signature, timestamp, nonce, decryptedEchostr)) {
-          console.log('- 解密后签名验证成功');
-          return decryptedEchostr;
-        } else {
-          console.log('- 解密后签名验证失败');
-          return null;
-        }
+        console.log('- echostr解密成功，返回解密后内容:', decryptedEchostr);
+        return decryptedEchostr;
       } else {
-        console.log('- echostr解密失败');
-        return null;
+        console.log('- echostr解密失败，返回原始内容');
+        return decodedEchostr;
       }
     } catch (error) {
       console.error('- 处理验证请求异常:', error);
