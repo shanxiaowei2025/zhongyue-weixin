@@ -1,4 +1,5 @@
 import axios from 'axios';
+import * as crypto from 'crypto';
 
 interface MessageArchiveConfig {
   corpId: string;
@@ -164,11 +165,16 @@ export class MessageArchiveService {
    * 处理文本消息记录
    */
   private async processTextRecord(record: ChatRecord): Promise<void> {
-    const content = record.content;
-    console.log(`文本消息内容: ${content}`);
-    
-    // TODO: 这里可以调用你的业务逻辑
-    // 例如：更新群消息记录、触发监控逻辑等
+    try {
+      // 解密消息内容
+      const decryptedContent = this.decryptMessage(record.content);
+      console.log(`文本消息内容: ${decryptedContent}`);
+      
+      // TODO: 这里可以调用你的业务逻辑
+      // 例如：更新群消息记录、触发监控逻辑等
+    } catch (error) {
+      console.error('解密文本消息失败:', error);
+    }
   }
 
   /**
@@ -193,6 +199,47 @@ export class MessageArchiveService {
   private async processVideoRecord(record: ChatRecord): Promise<void> {
     console.log('处理视频消息记录');
     // TODO: 处理视频消息
+  }
+
+  /**
+   * 解密消息内容
+   * @param encryptedData 加密的消息数据
+   * @returns 解密后的消息内容
+   */
+  private decryptMessage(encryptedData: any): string {
+    try {
+      if (!encryptedData || !encryptedData.encrypt_random_key || !encryptedData.encrypt_chat_msg) {
+        throw new Error('消息数据格式不正确');
+      }
+
+      // 解密随机密钥
+      const randomKey = crypto.privateDecrypt(
+        {
+          key: this.config.privateKey,
+          padding: crypto.constants.RSA_PKCS1_PADDING
+        },
+        Buffer.from(encryptedData.encrypt_random_key, 'base64')
+      );
+
+      // 使用随机密钥解密消息内容
+      const decipher = crypto.createDecipheriv('aes-256-cbc', randomKey, Buffer.alloc(16, 0));
+      decipher.setAutoPadding(false);
+      
+      const encrypted = Buffer.from(encryptedData.encrypt_chat_msg, 'base64');
+      const decrypted = Buffer.concat([
+        decipher.update(encrypted),
+        decipher.final()
+      ]);
+
+      // 移除PKCS7填充
+      const padLength = decrypted[decrypted.length - 1];
+      const unpadded = decrypted.slice(0, decrypted.length - padLength);
+
+      return unpadded.toString('utf8');
+    } catch (error) {
+      console.error('解密消息失败:', error);
+      throw error;
+    }
   }
 }
 
