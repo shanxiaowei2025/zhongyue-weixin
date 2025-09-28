@@ -20,8 +20,11 @@ services:
       # 其他配置
       - PORT=3010
       - ALERT_THRESHOLDS=${ALERT_THRESHOLDS}
-      # Groups API 配置 - 指向宿主机的API服务
-      - GROUPS_API_BASE_URL=http://host.docker.internal:3000
+      # Groups API 配置 - 使用线上API服务
+      - GROUPS_API_BASE_URL=https://manage.zhongyuekuaiji.cn
+      # Go服务配置 - 指向宿主机的Go服务
+      - GO_SERVICE_URL=http://host.docker.internal:8889
+      - GO_SERVICE_HOST=host.docker.internal
     networks:
       - zhongyue-django_zhongyue-network
     volumes:

@@ -29,7 +29,7 @@ export class MessageArchiveService {
   private config: MessageArchiveConfig;
   private accessToken: string | null = null;
   private tokenExpireTime: number = 0;
-  private readonly GO_SERVICE_URL = 'http://127.0.0.1:8889';
+  private readonly GO_SERVICE_URL = process.env.GO_SERVICE_URL || 'http://host.docker.internal:8889';
 
   constructor(config: MessageArchiveConfig) {
     this.config = config;
@@ -109,7 +109,8 @@ export class MessageArchiveService {
           resolve(false);
         }, 3000);
 
-        socket.connect(8889, 'localhost', () => {
+        const host = process.env.GO_SERVICE_HOST || 'host.docker.internal';
+        socket.connect(8889, host, () => {
           clearTimeout(timeout);
           socket.destroy();
           console.log('Go服务TCP连接成功');

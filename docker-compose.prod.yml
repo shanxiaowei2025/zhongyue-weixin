@@ -20,6 +20,11 @@ services:
       - ADDITIONAL_RECEIVERS=${ADDITIONAL_RECEIVERS}
       - ALERT_THRESHOLDS=${ALERT_THRESHOLDS:-10,30,60,120,180}
       - PORT=3010
+      # Groups API 配置 - 使用线上API服务
+      - GROUPS_API_BASE_URL=https://manage.zhongyuekuaiji.cn
+      # Go服务配置 - 在生产环境中指向宿主机的Go服务
+      - GO_SERVICE_URL=http://host.docker.internal:8889
+      - GO_SERVICE_HOST=host.docker.internal
     volumes:
       - ./logs:/app/logs
       - ./.env:/app/.env
