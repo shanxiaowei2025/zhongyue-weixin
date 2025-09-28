@@ -474,31 +474,196 @@ export class MessageArchiveService {
 
   /**
    * 处理会话存档通知
+   * 使用新的实时消息拉取机制
    */
   async processMsgAuditNotify(): Promise<void> {
     try {
-      console.log('开始处理会话存档通知...');
+      console.log('🔔 开始处理会话存档通知...');
       
-      // 1. 优先使用Go服务拉取最新的会话记录
-      let chatRecords: ChatRecord[] = [];
+      // 使用新的实时消息拉取方法，获取最近1小时内的消息
+      const recentMessages = await this.getLatestRealTimeMessages(1);
       
-      if (await this.healthCheck()) {
-        chatRecords = await this.getChatRecordsFromGoService();
-      } else {
-        console.log('⚠️ Go服务不可用，跳过会话记录处理');
+      if (recentMessages.length === 0) {
+        console.log('📭 没有发现最近的新消息');
         return;
       }
       
-      console.log(`拉取到 ${chatRecords.length} 条会话记录`);
+      console.log(`🎯 开始处理 ${recentMessages.length} 条实时消息`);
       
-      // 2. 处理每条记录
-      for (const record of chatRecords) {
-        await this.processChatRecord(record);
+      // 处理每条消息
+      for (const [index, record] of recentMessages.entries()) {
+        try {
+          console.log(`\n📝 处理消息 ${index + 1}/${recentMessages.length}: ${record.msgid}`);
+          await this.processChatRecord(record);
+        } catch (error) {
+          console.error(`处理消息 ${record.msgid} 失败:`, error);
+          // 继续处理下一条消息，不中断整个流程
+        }
       }
       
-      console.log('会话存档通知处理完成');
+      console.log('✅ 会话存档通知处理完成');
     } catch (error) {
-      console.error('处理会话存档通知失败:', error);
+      console.error('❌ 处理会话存档通知失败:', error);
+    }
+  }
+
+  /**
+   * 拉取最新的实时消息
+   * 这个方法专门用于获取最近的消息，而不是从历史开始拉取
+   */
+  async getLatestRealTimeMessages(timeWindowHours: number = 1): Promise<ChatRecord[]> {
+    try {
+      console.log(`🚀 开始拉取最近 ${timeWindowHours} 小时内的实时消息...`);
+      
+      // 检查Go服务是否可用
+      if (!(await this.healthCheck())) {
+        throw new Error('Go服务不可用');
+      }
+      
+      // 1. 先拉取一批消息来确定当前的seq范围
+      console.log('🔍 正在获取当前消息序号位置...');
+      let latestMessages: ChatRecord[] = [];
+      
+      // 策略：从seq=0开始拉取一定数量的消息，然后通过时间过滤
+      const batchSize = 500; // 增加批次大小，确保能获取到足够的消息
+      const rawMessages = await this.getChatRecordsFromGoService(0, batchSize, 5, true);
+      
+      console.log(`📨 获取到 ${rawMessages.length} 条原始消息`);
+      
+      if (rawMessages.length === 0) {
+        console.log('📭 没有获取到任何消息');
+        return [];
+      }
+      
+      // 2. 按时间过滤最新消息
+      const timeWindowMs = timeWindowHours * 60 * 60 * 1000;
+      const cutoffTime = Date.now() - timeWindowMs;
+      
+      latestMessages = rawMessages.filter(record => {
+        const msgTimeSeconds = this.extractTimestamp(record.message, record);
+        const msgTimeMs = msgTimeSeconds * 1000;
+        
+        const isRecent = msgTimeMs > cutoffTime;
+        
+        if (isRecent) {
+          const hoursAgo = Math.round((Date.now() - msgTimeMs) / (1000 * 60 * 60) * 10) / 10;
+          console.log(`✅ 实时消息: ${new Date(msgTimeMs).toLocaleString('zh-CN')} (${hoursAgo}小时前) - ${record.msgid}`);
+        }
+        
+        return isRecent;
+      });
+      
+      // 3. 按时间排序（最新的在前）
+      latestMessages.sort((a, b) => {
+        const timeA = this.extractTimestamp(a.message, a);
+        const timeB = this.extractTimestamp(b.message, b);
+        return timeB - timeA; // 降序排列，最新的在前
+      });
+      
+      console.log(`🎯 筛选出最近 ${timeWindowHours} 小时内的实时消息: ${latestMessages.length} 条`);
+      
+      // 4. 显示消息摘要
+      if (latestMessages.length > 0) {
+        const latestTime = this.extractTimestamp(latestMessages[0].message, latestMessages[0]);
+        const oldestTime = this.extractTimestamp(latestMessages[latestMessages.length - 1].message, latestMessages[latestMessages.length - 1]);
+        
+        console.log(`📊 消息时间范围: ${new Date(oldestTime * 1000).toLocaleString('zh-CN')} 到 ${new Date(latestTime * 1000).toLocaleString('zh-CN')}`);
+        
+        // 统计消息类型
+        const msgTypeCount = latestMessages.reduce((acc, msg) => {
+          const type = msg.msgtype || 'unknown';
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        
+        console.log('📈 消息类型统计:', msgTypeCount);
+      }
+      
+      return latestMessages;
+      
+    } catch (error) {
+      console.error('拉取实时消息失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 持续监控并拉取新消息
+   * 这个方法会定期检查并拉取新消息
+   */
+  async startRealTimeMessageMonitoring(intervalMinutes: number = 5, timeWindowHours: number = 1): Promise<void> {
+    console.log(`🔄 开始实时消息监控，每 ${intervalMinutes} 分钟检查一次，时间窗口 ${timeWindowHours} 小时`);
+    
+    let lastCheckTime = Date.now();
+    
+    const checkForNewMessages = async () => {
+      try {
+        console.log(`\n⏰ ${new Date().toLocaleString('zh-CN')} - 检查新消息...`);
+        
+        // 只获取上次检查后的消息
+        const timeSinceLastCheck = (Date.now() - lastCheckTime) / (1000 * 60 * 60); // 转换为小时
+        const checkWindow = Math.max(timeSinceLastCheck, timeWindowHours);
+        
+        const newMessages = await this.getLatestRealTimeMessages(checkWindow);
+        
+        if (newMessages.length > 0) {
+          console.log(`🆕 发现 ${newMessages.length} 条新消息`);
+          
+          // 处理每条新消息
+          for (const message of newMessages) {
+            await this.processChatRecord(message);
+          }
+        } else {
+          console.log('📭 没有新消息');
+        }
+        
+        lastCheckTime = Date.now();
+        
+      } catch (error) {
+        console.error('检查新消息时出错:', error);
+      }
+    };
+    
+    // 立即执行一次
+    await checkForNewMessages();
+    
+    // 设置定时器
+    setInterval(checkForNewMessages, intervalMinutes * 60 * 1000);
+  }
+
+  /**
+   * 获取指定时间范围内的消息
+   */
+  async getMessagesByTimeRange(startTime: Date, endTime: Date): Promise<ChatRecord[]> {
+    try {
+      console.log(`📅 获取时间范围内的消息: ${startTime.toLocaleString('zh-CN')} 到 ${endTime.toLocaleString('zh-CN')}`);
+      
+      // 拉取足够多的消息
+      const rawMessages = await this.getChatRecordsFromGoService(0, 1000, 10, true);
+      
+      const startTimeMs = startTime.getTime();
+      const endTimeMs = endTime.getTime();
+      
+      const filteredMessages = rawMessages.filter(record => {
+        const msgTimeSeconds = this.extractTimestamp(record.message, record);
+        const msgTimeMs = msgTimeSeconds * 1000;
+        
+        return msgTimeMs >= startTimeMs && msgTimeMs <= endTimeMs;
+      });
+      
+      // 按时间排序
+      filteredMessages.sort((a, b) => {
+        const timeA = this.extractTimestamp(a.message, a);
+        const timeB = this.extractTimestamp(b.message, b);
+        return timeB - timeA;
+      });
+      
+      console.log(`✅ 找到 ${filteredMessages.length} 条指定时间范围内的消息`);
+      return filteredMessages;
+      
+    } catch (error) {
+      console.error('获取指定时间范围消息失败:', error);
+      throw error;
     }
   }
 
@@ -570,60 +735,34 @@ export class MessageArchiveService {
   /**
    * 格式化消息时间戳
    */
-  private formatMessageTime(msgtime: number): string {
+  public formatMessageTime(msgtime: number): string {
     try {
       if (!msgtime || msgtime === 0) {
         return '时间未知';
       }
 
-      // 🔍 调试信息：显示原始时间戳
-      console.log(`🕐 原始时间戳: ${msgtime} (长度: ${msgtime.toString().length})`);
-
       // 处理不同的时间戳格式
       let timestamp = msgtime;
       let finalTime: Date;
-      let conversionMethod = '';
       
       // 如果是13位时间戳（毫秒），直接使用
       if (timestamp.toString().length === 13) {
         finalTime = new Date(timestamp);
-        conversionMethod = '13位毫秒时间戳';
       }
       // 如果是10位时间戳（秒），转换为毫秒
       else if (timestamp.toString().length === 10) {
         finalTime = new Date(timestamp * 1000);
-        conversionMethod = '10位秒时间戳';
       }
       // 如果是16位或17位时间戳（微秒或纳秒），转换为毫秒
       else if (timestamp.toString().length >= 16) {
         finalTime = new Date(Math.floor(timestamp / 1000));
-        conversionMethod = '16+位微秒时间戳';
       }
       // 其他情况，尝试作为秒时间戳处理
       else {
         finalTime = new Date(timestamp * 1000);
-        conversionMethod = '其他格式(当作秒处理)';
       }
       
-      const formattedTime = finalTime.toLocaleString('zh-CN');
-      const currentTime = new Date().toLocaleString('zh-CN');
-      
-      console.log(`🕐 时间转换: ${conversionMethod} -> ${formattedTime} (当前时间: ${currentTime})`);
-      
-      // 检查时间是否合理（不能是未来时间，且不能太久远）
-      const now = Date.now();
-      const timeDiff = now - finalTime.getTime();
-      const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-      
-      if (timeDiff < 0) {
-        console.log(`⚠️ 警告: 消息时间是未来时间！相差 ${Math.abs(daysDiff)} 天`);
-      } else if (daysDiff > 365) {
-        console.log(`⚠️ 警告: 消息时间超过1年前！相差 ${daysDiff} 天`);
-      } else {
-        console.log(`✅ 时间合理: ${daysDiff} 天前的消息`);
-      }
-      
-      return formattedTime;
+      return finalTime.toLocaleString('zh-CN');
       
     } catch (error) {
       console.error('时间格式化失败:', error);
