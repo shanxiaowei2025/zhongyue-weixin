@@ -181,6 +181,12 @@ export class MessageArchiveService {
       
       for (const goRecord of goData.chatdata || []) {
         try {
+          // 调试：打印前几条消息的原始结构
+          if (chatRecords.length < 3) {
+            console.log(`调试 - Go服务返回的原始消息结构 (msgid: ${goRecord.msgid}):`);
+            console.log(JSON.stringify(goRecord, null, 2));
+          }
+          
           const chatRecord = this.convertGoChatDataToChatRecord(goRecord);
           if (chatRecord) {
             chatRecords.push(chatRecord);
@@ -409,14 +415,26 @@ export class MessageArchiveService {
    */
   private async processTextRecord(record: ChatRecord): Promise<void> {
     try {
-      // 解密消息内容
-      const decryptedContent = this.decryptMessage(record.content);
-      console.log(`文本消息内容: ${decryptedContent}`);
+      // Go服务已经解密了消息，直接从content中提取文本内容
+      let textContent = '';
+      
+      if (record.content && typeof record.content === 'object') {
+        // 尝试不同的可能字段
+        textContent = record.content.text?.content || 
+                     record.content.content || 
+                     record.content.Content ||
+                     record.content.text ||
+                     JSON.stringify(record.content);
+      } else if (typeof record.content === 'string') {
+        textContent = record.content;
+      }
+      
+      console.log(`文本消息内容: ${textContent}`);
     
-    // TODO: 这里可以调用你的业务逻辑
-    // 例如：更新群消息记录、触发监控逻辑等
+      // TODO: 这里可以调用你的业务逻辑
+      // 例如：更新群消息记录、触发监控逻辑等
     } catch (error) {
-      console.error('解密文本消息失败:', error);
+      console.error('处理文本消息失败:', error);
     }
   }
 
@@ -424,24 +442,75 @@ export class MessageArchiveService {
    * 处理图片消息记录
    */
   private async processImageRecord(record: ChatRecord): Promise<void> {
-    console.log('处理图片消息记录');
-    // TODO: 处理图片消息
+    try {
+      // Go服务已经解密了消息，直接从content中提取图片信息
+      let imageInfo = '';
+      
+      if (record.content && typeof record.content === 'object') {
+        // 尝试提取图片相关信息
+        const image = record.content.image || record.content.Image || record.content;
+        imageInfo = JSON.stringify(image, null, 2);
+      } else if (typeof record.content === 'string') {
+        imageInfo = record.content;
+      }
+      
+      console.log(`图片消息内容: ${imageInfo}`);
+      
+      // TODO: 处理图片消息
+      // 可能需要下载图片文件等
+    } catch (error) {
+      console.error('处理图片消息失败:', error);
+    }
   }
 
   /**
    * 处理语音消息记录
    */
   private async processVoiceRecord(record: ChatRecord): Promise<void> {
-    console.log('处理语音消息记录');
-    // TODO: 处理语音消息
+    try {
+      // Go服务已经解密了消息，直接从content中提取语音信息
+      let voiceInfo = '';
+      
+      if (record.content && typeof record.content === 'object') {
+        // 尝试提取语音相关信息
+        const voice = record.content.voice || record.content.Voice || record.content;
+        voiceInfo = JSON.stringify(voice, null, 2);
+      } else if (typeof record.content === 'string') {
+        voiceInfo = record.content;
+      }
+      
+      console.log(`语音消息内容: ${voiceInfo}`);
+      
+      // TODO: 处理语音消息
+      // 可能需要下载语音文件等
+    } catch (error) {
+      console.error('处理语音消息失败:', error);
+    }
   }
 
   /**
    * 处理视频消息记录
    */
   private async processVideoRecord(record: ChatRecord): Promise<void> {
-    console.log('处理视频消息记录');
-    // TODO: 处理视频消息
+    try {
+      // Go服务已经解密了消息，直接从content中提取视频信息
+      let videoInfo = '';
+      
+      if (record.content && typeof record.content === 'object') {
+        // 尝试提取视频相关信息
+        const video = record.content.video || record.content.Video || record.content;
+        videoInfo = JSON.stringify(video, null, 2);
+      } else if (typeof record.content === 'string') {
+        videoInfo = record.content;
+      }
+      
+      console.log(`视频消息内容: ${videoInfo}`);
+      
+      // TODO: 处理视频消息
+      // 可能需要下载视频文件等
+    } catch (error) {
+      console.error('处理视频消息失败:', error);
+    }
   }
 
   /**
