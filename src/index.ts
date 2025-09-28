@@ -241,24 +241,129 @@ E3skLLFbCs1RgRWkaxNq8sO4
 
     const records = await messageService.getChatRecordsFromGoService(
       parseInt(seq as string), 
-      parseInt(limit as string),
+      parseInt(limit as string), 
       parseInt(timeout as string)
     );
     
-    res.json({
-      success: true,
-      count: records.length,
-      data: records,
-      params: {
-        seq: parseInt(seq as string),
-        limit: parseInt(limit as string),
-        timeout: parseInt(timeout as string)
-      }
-    });
+    res.json({ success: true, data: records });
   } catch (error: any) {
+    console.error('获取聊天记录失败:', error);
     res.status(500).json({ 
       success: false, 
-      error: error.message 
+      error: '获取聊天记录失败', 
+      details: error.message 
+    });
+  }
+});
+
+// 添加同步群最后消息接口
+app.post('/api/archive/sync-latest-messages', async (req, res) => {
+  try {
+    const { timeWindowHours = 24 } = req.body;
+    
+    console.log(`手动触发同步群最后消息，时间窗口: ${timeWindowHours}小时`);
+    
+    const messageService = new MessageArchiveService({
+      corpId: 'wwb477a7d74c001523',
+      secret: '7ekI6yLsJNbkuusoeP2Vez9t_7Fz0yBDW3HrPLgY96M',
+      privateKey: `-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCnKOK9rpD/XTeb
+NSPKWItJ5x0KAnEAgcpZOG5rY6+gpnX+NhKmWNea4m9ihd26z5spTzh1CFPtQ7qL
+wZOX0LBHS5szhqEq8U5xbLHYaYhMJQAaTeHCioEREHe4oodxMONxgFS8A3eIQzGk
+8nkyguGIEDjHKsV7KG1spqqe0PfFUzFkhnigG1xTjR9QdKE2PEqOceyuceaaMtE6
+TcjOC5V6l3Tv7UUVt1edqD80loAFNOm98ESziV7YEHPZKO2o2y5yHzzJKDbhAXBu
+50Gd4r3CBhDsLdWq+G1RnT5OLdjzrdIhL11PMFO2ly5iU1y8RkRYQB+zVHOjIG97
+4RdNKaJtAgMBAAECggEACsVwruZTw5C/J4oqDzzbZNy2m1GC9JRodI1VWCgpRgHT
+8piLZRqucfWLVd7oZcRA7E2Fhs0Nk2lc2OqVVyAEa+OsUYqoUfsQofBuGVLbjISJ
+2CgSlxWTsYTNIiGe9qU+0q6BR0g16Jrj1Qwm0SFr5PeeoP7ZkNEPFAQ9VFSE0rsp
+9toTncKgW/qGYvr6m4gIGwyfxi8O5PKDQ1eeftWZB66FyxfrcxB41umkRQT7GuyY
+CtTIVeibzp7hjDWwIut4NWubB/8pxf0MmUvg2ZXWZjQnM4GG4TRqc4rxIweaqeI0
+yrgpeGTexMH3essAPcZYwOJgmiXbeCLMRcR2bPcUYQKBgQDSLSUamzJ+8KANZT1L
+wj4EVdg5zbCVbi/9lr3h63L70UUgfyfC2ZIlxMHNjEwWGaZu+79W5P3l7A+93Uq6
+iWwldZlgm1Vm75YP4jyXJ5zGOge/8UkyDo6hoVm3qUQZeeCBbgOgqFpOqo9V1dk8
+gb4Mjo0nPzvJ8FK+8DgFu+YzJQKBgQDLmsubQXRn3g2Z3Bl5ESSrRTnO1eoMnCJW
+KdftxLRfY2SMPAyVZFdk7UzSIAA08ZODV0RwR9mCD8moRzRxCj2PoYr8RXQjGuUB
+t9wvEkTBZQrmnKUV5ZBuhHjUqhTeHsIPO/5xJUUBfjHm7isDoSB24TY+rkOa99V8
+Ip8N9wOzqQKBgQCgmkyzAwrYA0laUxU+scQwDeT3bpzT4uobDjg0zXUExcnb5i5c
+72KFJ8+sINv3O0x5nDd+z+bP7c2tmM7EscQI787vCmN9D/EMXCVOn79lnexUGK2E
+6ajGC4SCGn7mNMKARK/S8TJo0F5NCedBHCc8cyWbau9mBRVFwEwe3ZEvXQKBgE8s
+sdJ9AJRHgEh9k5ZFuVm0wMcS3kHrEVsqSGKYpH+XegkibM5HR8jikoX/lbUA4Bkp
+/V4gQo/WLdf3YIg4sDnDWvXA2GmyUq15XvEbDIucDEIjVfsO2zxu3UHtpdG+aj5c
+WRSMpqnu9d7UbPurU6GG8H4ta/K+P1FXcTyP+uuJAoGBAIbRTwgUMg341txNiZXm
+uftIHuH0jVa9ytUYUwZ0U7MbBeYuGpaO7dMBbSz9w0n5m5cutTCPv77UW8gxYkQt
+t4uXwIg2j6fHF7wuE9opgVVZDGUoHIbIXoAHOtHBUTFAr23u3TXrl0rg283KNSGC
+E3skLLFbCs1RgRWkaxNq8sO4
+-----END PRIVATE KEY-----`
+    });
+    
+    await messageService.syncLatestGroupMessages(timeWindowHours);
+    
+    res.json({ 
+      success: true, 
+      message: `群最后消息同步成功，时间窗口: ${timeWindowHours}小时` 
+    });
+  } catch (error: any) {
+    console.error('同步群最后消息失败:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: '同步群最后消息失败', 
+      details: error.message 
+    });
+  }
+});
+
+// 添加获取实时消息接口
+app.get('/api/archive/realtime-messages', async (req, res) => {
+  try {
+    const { timeWindowHours = '1' } = req.query;
+    
+    const messageService = new MessageArchiveService({
+      corpId: 'wwb477a7d74c001523',
+      secret: '7ekI6yLsJNbkuusoeP2Vez9t_7Fz0yBDW3HrPLgY96M',
+      privateKey: `-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCnKOK9rpD/XTeb
+NSPKWItJ5x0KAnEAgcpZOG5rY6+gpnX+NhKmWNea4m9ihd26z5spTzh1CFPtQ7qL
+wZOX0LBHS5szhqEq8U5xbLHYaYhMJQAaTeHCioEREHe4oodxMONxgFS8A3eIQzGk
+8nkyguGIEDjHKsV7KG1spqqe0PfFUzFkhnigG1xTjR9QdKE2PEqOceyuceaaMtE6
+TcjOC5V6l3Tv7UUVt1edqD80loAFNOm98ESziV7YEHPZKO2o2y5yHzzJKDbhAXBu
+50Gd4r3CBhDsLdWq+G1RnT5OLdjzrdIhL11PMFO2ly5iU1y8RkRYQB+zVHOjIG97
+4RdNKaJtAgMBAAECggEACsVwruZTw5C/J4oqDzzbZNy2m1GC9JRodI1VWCgpRgHT
+8piLZRqucfWLVd7oZcRA7E2Fhs0Nk2lc2OqVVyAEa+OsUYqoUfsQofBuGVLbjISJ
+2CgSlxWTsYTNIiGe9qU+0q6BR0g16Jrj1Qwm0SFr5PeeoP7ZkNEPFAQ9VFSE0rsp
+9toTncKgW/qGYvr6m4gIGwyfxi8O5PKDQ1eeftWZB66FyxfrcxB41umkRQT7GuyY
+CtTIVeibzp7hjDWwIut4NWubB/8pxf0MmUvg2ZXWZjQnM4GG4TRqc4rxIweaqeI0
+yrgpeGTexMH3essAPcZYwOJgmiXbeCLMRcR2bPcUYQKBgQDSLSUamzJ+8KANZT1L
+wj4EVdg5zbCVbi/9lr3h63L70UUgfyfC2ZIlxMHNjEwWGaZu+79W5P3l7A+93Uq6
+iWwldZlgm1Vm75YP4jyXJ5zGOge/8UkyDo6hoVm3qUQZeeCBbgOgqFpOqo9V1dk8
+gb4Mjo0nPzvJ8FK+8DgFu+YzJQKBgQDLmsubQXRn3g2Z3Bl5ESSrRTnO1eoMnCJW
+KdftxLRfY2SMPAyVZFdk7UzSIAA08ZODV0RwR9mCD8moRzRxCj2PoYr8RXQjGuUB
+t9wvEkTBZQrmnKUV5ZBuhHjUqhTeHsIPO/5xJUUBfjHm7isDoSB24TY+rkOa99V8
+Ip8N9wOzqQKBgQCgmkyzAwrYA0laUxU+scQwDeT3bpzT4uobDjg0zXUExcnb5i5c
+72KFJ8+sINv3O0x5nDd+z+bP7c2tmM7EscQI787vCmN9D/EMXCVOn79lnexUGK2E
+6ajGC4SCGn7mNMKARK/S8TJo0F5NCedBHCc8cyWbau9mBRVFwEwe3ZEvXQKBgE8s
+sdJ9AJRHgEh9k5ZFuVm0wMcS3kHrEVsqSGKYpH+XegkibM5HR8jikoX/lbUA4Bkp
+/V4gQo/WLdf3YIg4sDnDWvXA2GmyUq15XvEbDIucDEIjVfsO2zxu3UHtpdG+aj5c
+WRSMpqnu9d7UbPurU6GG8H4ta/K+P1FXcTyP+uuJAoGBAIbRTwgUMg341txNiZXm
+uftIHuH0jVa9ytUYUwZ0U7MbBeYuGpaO7dMBbSz9w0n5m5cutTCPv77UW8gxYkQt
+t4uXwIg2j6fHF7wuE9opgVVZDGUoHIbIXoAHOtHBUTFAr23u3TXrl0rg283KNSGC
+E3skLLFbCs1RgRWkaxNq8sO4
+-----END PRIVATE KEY-----`
+    });
+
+    const messages = await messageService.getLatestRealTimeMessages(parseFloat(timeWindowHours as string));
+    
+    res.json({ 
+      success: true, 
+      data: messages,
+      count: messages.length,
+      timeWindowHours: parseFloat(timeWindowHours as string)
+    });
+  } catch (error: any) {
+    console.error('获取实时消息失败:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: '获取实时消息失败', 
+      details: error.message 
     });
   }
 });
@@ -291,7 +396,7 @@ KdftxLRfY2SMPAyVZFdk7UzSIAA08ZODV0RwR9mCD8moRzRxCj2PoYr8RXQjGuUB
 t9wvEkTBZQrmnKUV5ZBuhHjUqhTeHsIPO/5xJUUBfjHm7isDoSB24TY+rkOa99V8
 Ip8N9wOzqQKBgQCgmkyzAwrYA0laUxU+scQwDeT3bpzT4uobDjg0zXUExcnb5i5c
 72KFJ8+sINv3O0x5nDd+z+bP7c2tmM7EscQI787vCmN9D/EMXCVOn79lnexUGK2E
-6ajGC4SCGn7mNMKARK/S8TJo0F5NCedBHCc8cyWbau9mBRVFwUwe3ZEvXQKBgE8s
+6ajGC4SCGn7mNMKARK/S8TJo0F5NCedBHCc8cyWbau9mBRVFwEwe3ZEvXQKBgE8s
 sdJ9AJRHgEh9k5ZFuVm0wMcS3kHrEVsqSGKYpH+XegkibM5HR8jikoX/lbUA4Bkp
 /V4gQo/WLdf3YIg4sDnDWvXA2GmyUq15XvEbDIucDEIjVfsO2zxu3UHtpdG+aj5c
 WRSMpqnu9d7UbPurU6GG8H4ta/K+P1FXcTyP+uuJAoGBAIbRTwgUMg341txNiZXm

@@ -1151,6 +1151,233 @@ export class MessageArchiveService {
       throw error;
     }
   }
+
+  /**
+   * 同步每个群的最后一条消息到数据库
+   * 这个方法专门用于获取所有群的最新消息并更新到数据库中
+   */
+  async syncLatestGroupMessages(timeWindowHours: number = 24): Promise<void> {
+    try {
+      console.log(`🔄 开始同步每个群的最后一条消息（时间窗口：${timeWindowHours}小时）...`);
+      
+      // 检查Go服务是否可用
+      if (!(await this.healthCheck())) {
+        throw new Error('Go服务不可用');
+      }
+      
+      // 1. 获取最近的消息数据
+      console.log('📡 正在获取最新消息数据...');
+      const latestMessages = await this.getLatestRealTimeMessages(timeWindowHours);
+      
+      if (latestMessages.length === 0) {
+        console.log('📭 没有找到任何最新消息');
+        return;
+      }
+      
+      console.log(`📨 获取到 ${latestMessages.length} 条最新消息，开始按群分组...`);
+      
+      // 2. 按群ID分组消息，找出每个群的最后一条消息
+      const groupLastMessages: { [roomId: string]: {
+        lastMessage: ChatRecord | null;
+        lastEmployeeMessage: ChatRecord | null;
+        lastCustomerMessage: ChatRecord | null;
+      } } = {};
+      
+      // 初始化监控服务和群组API服务
+      const { MonitorService } = await import('./MonitorService');
+      const { GroupApiService } = await import('./GroupApiService');
+      const monitorService = new MonitorService();
+      const groupApiService = new GroupApiService();
+      
+      // 按群分组并找出最后消息
+      for (const message of latestMessages) {
+        const roomId = message.roomid;
+        if (!roomId) continue; // 跳过非群消息
+        
+        if (!groupLastMessages[roomId]) {
+          groupLastMessages[roomId] = {
+            lastMessage: null,
+            lastEmployeeMessage: null,
+            lastCustomerMessage: null
+          };
+        }
+        
+        const group = groupLastMessages[roomId];
+        const msgTime = message.msgtime;
+        
+        // 判断消息发送者类型（这里需要实现用户类型判断逻辑）
+        const isEmployee = await this.isUserEmployee(message.from, roomId);
+        
+        // 更新通用最后消息
+        if (!group.lastMessage || msgTime > group.lastMessage.msgtime) {
+          group.lastMessage = message;
+        }
+        
+        // 更新员工/客户最后消息
+        if (isEmployee) {
+          if (!group.lastEmployeeMessage || msgTime > group.lastEmployeeMessage.msgtime) {
+            group.lastEmployeeMessage = message;
+          }
+        } else {
+          if (!group.lastCustomerMessage || msgTime > group.lastCustomerMessage.msgtime) {
+            group.lastCustomerMessage = message;
+          }
+        }
+      }
+      
+      console.log(`📊 共找到 ${Object.keys(groupLastMessages).length} 个群有最新消息`);
+      
+      // 3. 同步到数据库
+      let syncedCount = 0;
+      let errorCount = 0;
+      
+      for (const [roomId, messages] of Object.entries(groupLastMessages)) {
+        try {
+          console.log(`🔄 正在同步群 ${roomId} 的最后消息...`);
+          
+          // 查找群组信息
+          const group = await groupApiService.getGroupByChatId(roomId);
+          
+          if (!group || !group.id) {
+            console.warn(`⚠️ 未找到群组 ${roomId} 的数据库记录，跳过同步`);
+            continue;
+          }
+          
+          // 同步通用最后消息
+          if (messages.lastMessage) {
+            await this.updateGroupLastMessage(group.id, messages.lastMessage, 'general');
+            console.log(`✅ 已更新群 ${group.name} 的通用最后消息`);
+          }
+          
+          // 同步员工最后消息
+          if (messages.lastEmployeeMessage) {
+            await this.updateGroupLastMessage(group.id, messages.lastEmployeeMessage, 'employee');
+            console.log(`✅ 已更新群 ${group.name} 的员工最后消息`);
+          }
+          
+          // 同步客户最后消息
+          if (messages.lastCustomerMessage) {
+            await this.updateGroupLastMessage(group.id, messages.lastCustomerMessage, 'customer');
+            console.log(`✅ 已更新群 ${group.name} 的客户最后消息`);
+          }
+          
+          syncedCount++;
+          
+        } catch (error) {
+          console.error(`❌ 同步群 ${roomId} 最后消息失败:`, error);
+          errorCount++;
+        }
+      }
+      
+      console.log(`🎯 同步完成: 成功 ${syncedCount} 个群，失败 ${errorCount} 个群`);
+      
+    } catch (error) {
+      console.error('❌ 同步群最后消息失败:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * 辅助方法：判断用户是否为员工
+   * @param userId 用户ID
+   * @param roomId 群ID
+   * @returns Promise<boolean>
+   */
+  private async isUserEmployee(userId: string, roomId: string): Promise<boolean> {
+    try {
+      // 这里可以实现具体的员工判断逻辑
+      // 可以通过企业微信API查询用户信息，或者维护一个员工列表
+      // 暂时使用简单的规则判断（可以根据实际需求调整）
+      
+      // 1. 如果用户ID包含企业特定标识，认为是员工
+      const employeeKeywords = ['ZhongYue', 'LiuFei', 'CaoHaiLing', 'YangYiRu'];
+      if (employeeKeywords.some(keyword => userId.includes(keyword))) {
+        return true;
+      }
+      
+      // 2. 如果用户ID以企业域开头，认为是员工
+      if (userId.startsWith('wwb477a7d74c001523') || userId.length < 20) {
+        return true;
+      }
+      
+      // 3. 其他情况认为是客户
+      return false;
+      
+    } catch (error) {
+      console.error(`判断用户 ${userId} 类型失败:`, error);
+      return false; // 默认认为是客户
+    }
+  }
+  
+  /**
+   * 辅助方法：更新群组最后消息到数据库
+   * @param groupId 群组数据库ID
+   * @param message 消息记录
+   * @param type 消息类型
+   */
+  private async updateGroupLastMessage(
+    groupId: number, 
+    message: ChatRecord, 
+    type: 'general' | 'employee' | 'customer'
+  ): Promise<void> {
+    try {
+      const { GroupApiService } = await import('./GroupApiService');
+      const groupApiService = new GroupApiService();
+      
+      // 构建消息数据
+      const messageData = {
+        from: message.from,
+        msgId: message.msgid,
+        content: this.extractMessageContent(message),
+        fromType: type === 'employee' ? 'employee' as const : 'customer' as const,
+        createTime: new Date(message.msgtime * 1000).toISOString()
+      };
+      
+      // 调用API更新
+      await groupApiService.updateGroupLastMessage(groupId, messageData, type);
+      
+    } catch (error) {
+      console.error(`更新群组 ${groupId} 的 ${type} 最后消息失败:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * 辅助方法：提取消息内容
+   * @param message 消息记录
+   * @returns 消息内容字符串
+   */
+  private extractMessageContent(message: ChatRecord): string {
+    try {
+      if (typeof message.content === 'string') {
+        return message.content;
+      }
+      
+      if (typeof message.content === 'object' && message.content !== null) {
+        // 根据消息类型提取内容
+        switch (message.msgtype) {
+          case 'text':
+            return message.content.content || '[文本消息]';
+          case 'image':
+            return '[图片消息]';
+          case 'voice':
+            return '[语音消息]';
+          case 'video':
+            return '[视频消息]';
+          case 'file':
+            return `[文件消息: ${message.content.filename || '未知文件'}]`;
+          default:
+            return `[${message.msgtype || '未知'}消息]`;
+        }
+      }
+      
+      return '[消息内容解析失败]';
+      
+    } catch (error) {
+      console.error('提取消息内容失败:', error);
+      return '[消息内容提取失败]';
+    }
+  }
 }
 
 export default MessageArchiveService;
