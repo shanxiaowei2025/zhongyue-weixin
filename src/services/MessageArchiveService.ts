@@ -576,35 +576,54 @@ export class MessageArchiveService {
         return '时间未知';
       }
 
+      // 🔍 调试信息：显示原始时间戳
+      console.log(`🕐 原始时间戳: ${msgtime} (长度: ${msgtime.toString().length})`);
+
       // 处理不同的时间戳格式
       let timestamp = msgtime;
+      let finalTime: Date;
+      let conversionMethod = '';
       
       // 如果是13位时间戳（毫秒），直接使用
       if (timestamp.toString().length === 13) {
-        return new Date(timestamp).toLocaleString('zh-CN');
+        finalTime = new Date(timestamp);
+        conversionMethod = '13位毫秒时间戳';
       }
-      
       // 如果是10位时间戳（秒），转换为毫秒
-      if (timestamp.toString().length === 10) {
-        return new Date(timestamp * 1000).toLocaleString('zh-CN');
+      else if (timestamp.toString().length === 10) {
+        finalTime = new Date(timestamp * 1000);
+        conversionMethod = '10位秒时间戳';
+      }
+      // 如果是16位或17位时间戳（微秒或纳秒），转换为毫秒
+      else if (timestamp.toString().length >= 16) {
+        finalTime = new Date(Math.floor(timestamp / 1000));
+        conversionMethod = '16+位微秒时间戳';
+      }
+      // 其他情况，尝试作为秒时间戳处理
+      else {
+        finalTime = new Date(timestamp * 1000);
+        conversionMethod = '其他格式(当作秒处理)';
       }
       
-      // 如果是16位或17位时间戳（微秒），转换为毫秒
-      if (timestamp.toString().length >= 16) {
-        return new Date(Math.floor(timestamp / 1000)).toLocaleString('zh-CN');
-      }
+      const formattedTime = finalTime.toLocaleString('zh-CN');
+      const currentTime = new Date().toLocaleString('zh-CN');
       
-      // 如果时间戳看起来不合理（比如太大或太小），尝试不同的处理方式
+      console.log(`🕐 时间转换: ${conversionMethod} -> ${formattedTime} (当前时间: ${currentTime})`);
+      
+      // 检查时间是否合理（不能是未来时间，且不能太久远）
       const now = Date.now();
-      const timestampMs = timestamp * 1000;
+      const timeDiff = now - finalTime.getTime();
+      const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
       
-      // 检查转换后的时间是否合理（在1970年到2100年之间）
-      if (timestampMs > 0 && timestampMs < 4102444800000) { // 2100年的时间戳
-        return new Date(timestampMs).toLocaleString('zh-CN');
+      if (timeDiff < 0) {
+        console.log(`⚠️ 警告: 消息时间是未来时间！相差 ${Math.abs(daysDiff)} 天`);
+      } else if (daysDiff > 365) {
+        console.log(`⚠️ 警告: 消息时间超过1年前！相差 ${daysDiff} 天`);
+      } else {
+        console.log(`✅ 时间合理: ${daysDiff} 天前的消息`);
       }
       
-      // 如果都不合理，返回原始值和当前时间
-      return `时间戳异常: ${msgtime} (${new Date().toLocaleString('zh-CN')})`;
+      return formattedTime;
       
     } catch (error) {
       console.error('时间格式化失败:', error);
