@@ -7,6 +7,21 @@ interface MessageArchiveConfig {
   privateKey: string; // RSA私钥，用于解密会话内容
 }
 
+// Go服务返回的数据结构
+interface GoChatData {
+  seq: number;
+  msgid: string;
+  publickey_ver?: number;
+  message: any; // 实际的消息内容
+}
+
+interface GoChatDataResponse {
+  errcode: number;
+  errmsg: string;
+  chatdata: GoChatData[];
+}
+
+// 标准化后的聊天记录结构
 interface ChatRecord {
   msgid: string;
   action: string;
@@ -152,14 +167,32 @@ export class MessageArchiveService {
         }
       });
 
-      const data: ChatDataResponse = response.data;
+      // 处理Go服务返回的数据结构
+      const goData: GoChatDataResponse = response.data;
       
-      if (data.errcode !== 0) {
-        throw new Error(`获取聊天数据失败: ${data.errmsg}`);
+      if (goData.errcode !== 0) {
+        throw new Error(`获取聊天数据失败: ${goData.errmsg}`);
       }
 
-      console.log(`✅ 成功获取 ${data.chatdata?.length || 0} 条聊天记录`);
-      return data.chatdata || [];
+      console.log(`✅ 成功获取 ${goData.chatdata?.length || 0} 条聊天记录`);
+      
+      // 转换Go服务数据结构为标准ChatRecord格式
+      const chatRecords: ChatRecord[] = [];
+      
+      for (const goRecord of goData.chatdata || []) {
+        try {
+          const chatRecord = this.convertGoChatDataToChatRecord(goRecord);
+          if (chatRecord) {
+            chatRecords.push(chatRecord);
+          }
+        } catch (convertError) {
+          console.error(`转换消息记录失败 (msgid: ${goRecord.msgid}):`, convertError);
+          // 继续处理其他记录，不中断整个流程
+        }
+      }
+      
+      console.log(`✅ 成功转换 ${chatRecords.length} 条聊天记录`);
+      return chatRecords;
       
     } catch (error) {
       console.error('通过Go服务获取聊天数据失败:', error);
@@ -409,6 +442,60 @@ export class MessageArchiveService {
   private async processVideoRecord(record: ChatRecord): Promise<void> {
     console.log('处理视频消息记录');
     // TODO: 处理视频消息
+  }
+
+  /**
+   * 转换Go服务返回的数据结构为标准ChatRecord格式
+   * @param goRecord Go服务返回的聊天数据
+   * @returns 标准化的ChatRecord或null
+   */
+  private convertGoChatDataToChatRecord(goRecord: GoChatData): ChatRecord | null {
+    try {
+      if (!goRecord.message) {
+        console.log(`消息 ${goRecord.msgid} 没有message字段，跳过处理`);
+        return null;
+      }
+
+      const message = goRecord.message;
+      
+      // 企业微信SDK返回的消息结构通常直接包含这些字段
+      // 如果message本身就是解密后的标准消息对象，直接使用
+      if (message.msgid && message.action && message.from) {
+        // 标准的企业微信消息格式
+        const chatRecord: ChatRecord = {
+          msgid: message.msgid || goRecord.msgid,
+          action: message.action || 'send',
+          from: message.from || '',
+          tolist: Array.isArray(message.tolist) ? message.tolist : [],
+          roomid: message.roomid || '',
+          msgtime: message.msgtime || 0,
+          msgtype: message.msgtype || '',
+          content: message
+        };
+        return chatRecord;
+      } else {
+        // 如果消息格式不标准，尝试从不同的可能字段中提取
+        console.log(`消息 ${goRecord.msgid} 格式不标准，尝试提取字段:`, JSON.stringify(message, null, 2));
+        
+        // 构建一个基础的ChatRecord，使用可用的字段
+        const chatRecord: ChatRecord = {
+          msgid: goRecord.msgid,
+          action: 'send',
+          from: message.from || message.FromUserName || '',
+          tolist: message.tolist || (message.ToUserName ? [message.ToUserName] : []),
+          roomid: message.roomid || message.ChatId || '',
+          msgtime: message.msgtime || message.CreateTime || 0,
+          msgtype: message.msgtype || message.MsgType || '',
+          content: message
+        };
+        
+        return chatRecord;
+      }
+    } catch (error) {
+      console.error(`转换Go聊天数据失败 (msgid: ${goRecord.msgid}):`, error);
+      console.error('消息内容:', JSON.stringify(goRecord, null, 2));
+      return null;
+    }
   }
 
   /**
