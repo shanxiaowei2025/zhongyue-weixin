@@ -494,7 +494,7 @@ export class MessageArchiveService {
       for (const [index, record] of recentMessages.entries()) {
         try {
           console.log(`\n📝 处理消息 ${index + 1}/${recentMessages.length}: ${record.msgid}`);
-          await this.processChatRecord(record);
+        await this.processChatRecord(record);
         } catch (error) {
           console.error(`处理消息 ${record.msgid} 失败:`, error);
           // 继续处理下一条消息，不中断整个流程
@@ -941,8 +941,8 @@ export class MessageArchiveService {
       
       console.log(`文本消息内容: ${textContent}`);
     
-      // TODO: 这里可以调用你的业务逻辑
-      // 例如：更新群消息记录、触发监控逻辑等
+    // TODO: 这里可以调用你的业务逻辑
+    // 例如：更新群消息记录、触发监控逻辑等
     } catch (error) {
       console.error('处理文本消息失败:', error);
     }
@@ -966,7 +966,7 @@ export class MessageArchiveService {
       
       console.log(`图片消息内容: ${imageInfo}`);
       
-      // TODO: 处理图片消息
+    // TODO: 处理图片消息
       // 可能需要下载图片文件等
     } catch (error) {
       console.error('处理图片消息失败:', error);
@@ -991,7 +991,7 @@ export class MessageArchiveService {
       
       console.log(`语音消息内容: ${voiceInfo}`);
       
-      // TODO: 处理语音消息
+    // TODO: 处理语音消息
       // 可能需要下载语音文件等
     } catch (error) {
       console.error('处理语音消息失败:', error);
@@ -1048,7 +1048,7 @@ export class MessageArchiveService {
       
       console.log(`视频消息内容: ${videoInfo}`);
       
-      // TODO: 处理视频消息
+    // TODO: 处理视频消息
       // 可能需要下载视频文件等
     } catch (error) {
       console.error('处理视频消息失败:', error);

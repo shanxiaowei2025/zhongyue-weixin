@@ -241,7 +241,7 @@ E3skLLFbCs1RgRWkaxNq8sO4
 
     const records = await messageService.getChatRecordsFromGoService(
       parseInt(seq as string), 
-      parseInt(limit as string), 
+      parseInt(limit as string),
       parseInt(timeout as string)
     );
     
@@ -298,8 +298,8 @@ E3skLLFbCs1RgRWkaxNq8sO4
     
     await messageService.syncLatestGroupMessages(timeWindowHours);
     
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: `群最后消息同步成功，时间窗口: ${timeWindowHours}小时` 
     });
   } catch (error: any) {
