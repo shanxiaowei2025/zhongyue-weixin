@@ -540,7 +540,12 @@ export class MessageArchiveService {
       const cutoffTime = Date.now() - timeWindowMs;
       
       latestMessages = rawMessages.filter(record => {
-        const msgTimeSeconds = this.extractTimestamp(record.message, record);
+        if (!record) {
+          return false;
+        }
+        
+        // record.content 是实际的消息内容，record.message 不存在
+        const msgTimeSeconds = this.extractTimestamp(record.content, record);
         const msgTimeMs = msgTimeSeconds * 1000;
         
         const isRecent = msgTimeMs > cutoffTime;
@@ -555,8 +560,8 @@ export class MessageArchiveService {
       
       // 3. 按时间排序（最新的在前）
       latestMessages.sort((a, b) => {
-        const timeA = this.extractTimestamp(a.message, a);
-        const timeB = this.extractTimestamp(b.message, b);
+        const timeA = this.extractTimestamp(a.content, a);
+        const timeB = this.extractTimestamp(b.content, b);
         return timeB - timeA; // 降序排列，最新的在前
       });
       
@@ -564,8 +569,8 @@ export class MessageArchiveService {
       
       // 4. 显示消息摘要
       if (latestMessages.length > 0) {
-        const latestTime = this.extractTimestamp(latestMessages[0].message, latestMessages[0]);
-        const oldestTime = this.extractTimestamp(latestMessages[latestMessages.length - 1].message, latestMessages[latestMessages.length - 1]);
+        const latestTime = this.extractTimestamp(latestMessages[0].content, latestMessages[0]);
+        const oldestTime = this.extractTimestamp(latestMessages[latestMessages.length - 1].content, latestMessages[latestMessages.length - 1]);
         
         console.log(`📊 消息时间范围: ${new Date(oldestTime * 1000).toLocaleString('zh-CN')} 到 ${new Date(latestTime * 1000).toLocaleString('zh-CN')}`);
         
@@ -645,7 +650,11 @@ export class MessageArchiveService {
       const endTimeMs = endTime.getTime();
       
       const filteredMessages = rawMessages.filter(record => {
-        const msgTimeSeconds = this.extractTimestamp(record.message, record);
+        if (!record) {
+          return false;
+        }
+        
+        const msgTimeSeconds = this.extractTimestamp(record.content, record);
         const msgTimeMs = msgTimeSeconds * 1000;
         
         return msgTimeMs >= startTimeMs && msgTimeMs <= endTimeMs;
@@ -653,8 +662,8 @@ export class MessageArchiveService {
       
       // 按时间排序
       filteredMessages.sort((a, b) => {
-        const timeA = this.extractTimestamp(a.message, a);
-        const timeB = this.extractTimestamp(b.message, b);
+        const timeA = this.extractTimestamp(a.content, a);
+        const timeB = this.extractTimestamp(b.content, b);
         return timeB - timeA;
       });
       
