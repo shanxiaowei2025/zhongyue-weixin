@@ -29,7 +29,7 @@ export class MessageArchiveService {
   private config: MessageArchiveConfig;
   private accessToken: string | null = null;
   private tokenExpireTime: number = 0;
-  private readonly GO_SERVICE_URL = 'http://localhost:8889';
+  private readonly GO_SERVICE_URL = 'http://127.0.0.1:8889';
 
   constructor(config: MessageArchiveConfig) {
     this.config = config;
@@ -290,7 +290,7 @@ export class MessageArchiveService {
 📋 当前状态：
 • 许可用户: ${response.data.ids?.join(', ') || '无'}
 • 会话存档权限: ✅ 已开启
-• Go服务状态: ❌ 不可用 (请确保 http://localhost:8889 服务正在运行)
+      • Go服务状态: ❌ 不可用 (请确保 http://127.0.0.1:8889 服务正在运行)
 
 🔧 快速部署建议：
 1. 启动 WeworkMsg Go服务 (端口8889)

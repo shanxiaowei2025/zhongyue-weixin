@@ -190,7 +190,7 @@ E3skLLFbCs1RgRWkaxNq8sO4
     res.json({ 
       status: isHealthy ? 'healthy' : 'unhealthy',
       service: 'wework-archive-go-service',
-      url: 'http://localhost:8889',
+      url: 'http://127.0.0.1:8889',
       message: isHealthy ? 'Go服务连接正常' : 'Go服务连接失败，请确保WeworkMsg服务正在运行'
     });
   } catch (error: any) {
