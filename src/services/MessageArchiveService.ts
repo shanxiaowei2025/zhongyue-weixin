@@ -520,54 +520,139 @@ export class MessageArchiveService {
         throw new Error('Go服务不可用');
       }
       
-      // 1. 先拉取一批消息来确定当前的seq范围
-      console.log('🔍 正在获取当前消息序号位置...');
-      let latestMessages: ChatRecord[] = [];
+      // 🎯 新策略：先快速探测消息分布，然后智能拉取最新消息
+      console.log('🔍 正在智能探测最新消息...');
       
-      // 策略：从seq=0开始拉取一定数量的消息，然后通过时间过滤
-      const batchSize = 500; // 增加批次大小，确保能获取到足够的消息
-      const rawMessages = await this.getChatRecordsFromGoService(0, batchSize, 5, true);
-      
-      console.log(`📨 获取到 ${rawMessages.length} 条原始消息`);
-      
-      if (rawMessages.length === 0) {
-        console.log('📭 没有获取到任何消息');
-        return [];
-      }
-      
-      // 2. 按时间过滤最新消息
       const timeWindowMs = timeWindowHours * 60 * 60 * 1000;
       const cutoffTime = Date.now() - timeWindowMs;
+      console.log(`⏰ 时间窗口: ${new Date(cutoffTime).toLocaleString('zh-CN')} 之后的消息`);
       
-      latestMessages = rawMessages.filter(record => {
-        if (!record) {
-          return false;
+      // 第一阶段：快速探测，了解消息的时间分布
+      let latestMessages: ChatRecord[] = [];
+      let totalExplored = 0;
+      const maxExploreLimit = 2500; // 最多探测2500条消息
+      const exploreStep = 500; // 每次探测500条
+      
+      console.log('🔬 第一阶段：快速探测消息分布...');
+      
+      for (let seq = 0; seq < maxExploreLimit; seq += exploreStep) {
+        console.log(`📡 探测消息段: seq=${seq}, limit=${exploreStep}`);
+        
+        const batchMessages = await this.getChatRecordsFromGoService(seq, exploreStep, 5, true);
+        totalExplored += batchMessages.length;
+        
+        if (batchMessages.length === 0) {
+          console.log(`📭 探测结束: seq=${seq} 处无更多消息`);
+          break;
         }
         
-        // record.content 是实际的消息内容，record.message 不存在
-        const msgTimeSeconds = this.extractTimestamp(record.content, record);
-        const msgTimeMs = msgTimeSeconds * 1000;
+        // 分析这批消息的时间分布
+        const batchTimes = batchMessages.map(record => {
+          const msgTimeSeconds = this.extractTimestamp(record.content, record);
+          return msgTimeSeconds * 1000;
+        });
         
-        const isRecent = msgTimeMs > cutoffTime;
+        const maxTimeInBatch = Math.max(...batchTimes);
+        const minTimeInBatch = Math.min(...batchTimes);
+        const recentCount = batchTimes.filter(time => time > cutoffTime).length;
         
-        if (isRecent) {
-          const hoursAgo = Math.round((Date.now() - msgTimeMs) / (1000 * 60 * 60) * 10) / 10;
-          console.log(`✅ 实时消息: ${new Date(msgTimeMs).toLocaleString('zh-CN')} (${hoursAgo}小时前) - ${record.msgid}`);
+        console.log(`📊 消息段分析: 时间范围 ${new Date(minTimeInBatch).toLocaleString('zh-CN')} ~ ${new Date(maxTimeInBatch).toLocaleString('zh-CN')}, 最新消息数: ${recentCount}`);
+        
+        // 收集这批中的最新消息
+        const recentInBatch = batchMessages.filter(record => {
+          const msgTimeSeconds = this.extractTimestamp(record.content, record);
+          return msgTimeSeconds * 1000 > cutoffTime;
+        });
+        
+        latestMessages.push(...recentInBatch);
+        
+        // 如果这批消息都很旧，可以停止探测
+        if (maxTimeInBatch < cutoffTime) {
+          console.log(`⏸️ 消息段都早于时间窗口，停止探测`);
+          break;
         }
         
-        return isRecent;
+        // 如果已经找到足够多的最新消息，可以停止
+        if (latestMessages.length >= 100) {
+          console.log(`✅ 已探测到足够的最新消息 (${latestMessages.length} 条)，停止探测`);
+          break;
+        }
+      }
+      
+      console.log(`🔍 探测完成: 总共探测了 ${totalExplored} 条消息，找到 ${latestMessages.length} 条最新消息`);
+      
+      // 第二阶段：如果找到的最新消息不够，尝试反向探测
+      if (latestMessages.length < 10) {
+        console.log('🔄 第二阶段：尝试反向探测更多最新消息...');
+        
+        // 尝试从更大的seq开始探测（可能消息是倒序存储的）
+        const reverseSeqs = [5000, 10000, 15000, 20000];
+        
+        for (const startSeq of reverseSeqs) {
+          console.log(`🔄 反向探测: seq=${startSeq}`);
+          
+          const reverseBatch = await this.getChatRecordsFromGoService(startSeq, 1000, 5, true);
+          if (reverseBatch.length === 0) {
+            console.log(`📭 反向探测: seq=${startSeq} 处无消息`);
+            continue;
+          }
+          
+          const reverseTimes = reverseBatch.map(record => {
+            const msgTimeSeconds = this.extractTimestamp(record.content, record);
+            return msgTimeSeconds * 1000;
+          });
+          
+          const maxReverseTime = Math.max(...reverseTimes);
+          const reverseRecentCount = reverseTimes.filter(time => time > cutoffTime).length;
+          
+          console.log(`📊 反向探测分析: 最新时间 ${new Date(maxReverseTime).toLocaleString('zh-CN')}, 最新消息数: ${reverseRecentCount}`);
+          
+          if (reverseRecentCount > 0) {
+            const reverseRecentMessages = reverseBatch.filter(record => {
+              const msgTimeSeconds = this.extractTimestamp(record.content, record);
+              return msgTimeSeconds * 1000 > cutoffTime;
+            });
+            
+            latestMessages.push(...reverseRecentMessages);
+            console.log(`✅ 反向探测找到 ${reverseRecentMessages.length} 条最新消息`);
+            break;
+          }
+        }
+      }
+      
+      // 去重（基于msgid）
+      const uniqueMessages = new Map();
+      latestMessages.forEach(msg => {
+        if (!uniqueMessages.has(msg.msgid)) {
+          uniqueMessages.set(msg.msgid, msg);
+        }
       });
+      latestMessages = Array.from(uniqueMessages.values());
       
-      // 3. 按时间排序（最新的在前）
+      // 按时间排序（最新的在前）
       latestMessages.sort((a, b) => {
         const timeA = this.extractTimestamp(a.content, a);
         const timeB = this.extractTimestamp(b.content, b);
         return timeB - timeA; // 降序排列，最新的在前
       });
       
-      console.log(`🎯 筛选出最近 ${timeWindowHours} 小时内的实时消息: ${latestMessages.length} 条`);
+      console.log(`📊 最终统计: 总共找到 ${latestMessages.length} 条最近 ${timeWindowHours} 小时内的实时消息`);
       
-      // 4. 显示消息摘要
+      // 打印找到的最新消息
+      latestMessages.forEach((record, index) => {
+        if (index < 10) { // 只打印前10条
+          const msgTimeSeconds = this.extractTimestamp(record.content, record);
+          const msgTimeMs = msgTimeSeconds * 1000;
+          const hoursAgo = Math.round((Date.now() - msgTimeMs) / (1000 * 60 * 60) * 10) / 10;
+          console.log(`✅ 实时消息 ${index + 1}: ${new Date(msgTimeMs).toLocaleString('zh-CN')} (${hoursAgo}小时前) - ${record.msgid}`);
+        }
+      });
+      
+      if (latestMessages.length > 10) {
+        console.log(`... 还有 ${latestMessages.length - 10} 条最新消息`);
+      }
+      
+      // 显示消息摘要
       if (latestMessages.length > 0) {
         const latestTime = this.extractTimestamp(latestMessages[0].content, latestMessages[0]);
         const oldestTime = this.extractTimestamp(latestMessages[latestMessages.length - 1].content, latestMessages[latestMessages.length - 1]);
@@ -582,12 +667,14 @@ export class MessageArchiveService {
         }, {} as Record<string, number>);
         
         console.log('📈 消息类型统计:', msgTypeCount);
+      } else {
+        console.log('⚠️ 未找到任何最新消息，可能需要调整时间窗口或检查Go服务数据');
       }
       
       return latestMessages;
       
     } catch (error) {
-      console.error('拉取实时消息失败:', error);
+      console.error('❌ 拉取实时消息失败:', error);
       throw error;
     }
   }
