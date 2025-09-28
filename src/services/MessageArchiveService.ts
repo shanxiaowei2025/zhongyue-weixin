@@ -141,7 +141,9 @@ export class MessageArchiveService {
       const response = await axios.post(`${this.GO_SERVICE_URL}/get_chat_data`, {
         seq,
         limit,
-        timeout
+        timeout,
+        proxy: "",
+        passwd: ""
       }, {
         timeout: 10000, // HTTP请求超时10秒
         headers: {
