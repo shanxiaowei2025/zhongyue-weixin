@@ -8,8 +8,7 @@ services:
       dockerfile: Dockerfile
       target: production
     restart: always
-    ports:
-      - "3010:3010"
+    # ports配置在host网络模式下不需要
     environment:
       - NODE_ENV=production
       - CORP_ID=${CORP_ID}
@@ -23,15 +22,12 @@ services:
       # Groups API 配置 - 使用线上API服务
       - GROUPS_API_BASE_URL=https://manage.zhongyuekuaiji.cn
       # Go服务配置 - 在生产环境中指向宿主机的Go服务
-      - GO_SERVICE_URL=http://host.docker.internal:8889
-      - GO_SERVICE_HOST=host.docker.internal
+      - GO_SERVICE_URL=http://127.0.0.1:8889
+      - GO_SERVICE_HOST=127.0.0.1
     volumes:
       - ./logs:/app/logs
       - ./.env:/app/.env
-    networks:
-      - web_network
+    network_mode: host
     command: node dist/index.js
 
-networks:
-  web_network:
-    driver: bridge 
+# 使用host网络模式，不需要自定义网络 
