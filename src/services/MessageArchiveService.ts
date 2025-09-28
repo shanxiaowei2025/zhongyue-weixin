@@ -145,12 +145,13 @@ export class MessageArchiveService {
   }
 
   /**
-   * 通过Go服务获取聊天记录数据（推荐方法）
+   * 通过Go服务获取群聊记录数据（只返回群消息）
    * @param seq 起始序号，首次传0
    * @param limit 限制数量，最大1000
    * @param timeout 超时时间，秒
+   * @param groupOnly 是否只返回群消息，默认true
    */
-  async getChatRecordsFromGoService(seq: number = 0, limit: number = 100, timeout: number = 3): Promise<ChatRecord[]> {
+  async getChatRecordsFromGoService(seq: number = 0, limit: number = 100, timeout: number = 3, groupOnly: boolean = true): Promise<ChatRecord[]> {
     try {
       console.log(`正在通过Go服务获取聊天数据，seq: ${seq}, limit: ${limit}`);
       
@@ -197,6 +198,19 @@ export class MessageArchiveService {
         }
       }
       
+      // 🎯 如果启用了群消息过滤，只返回群消息
+      if (groupOnly) {
+        const groupMessages = chatRecords.filter(record => {
+          const hasRoomId = record.roomid && record.roomid.trim() !== '';
+          if (!hasRoomId) {
+            console.log(`🚫 过滤掉非群消息: ${record.msgid}`);
+          }
+          return hasRoomId;
+        });
+        console.log(`✅ 成功转换 ${chatRecords.length} 条记录，其中群消息 ${groupMessages.length} 条`);
+        return groupMessages;
+      }
+      
       console.log(`✅ 成功转换 ${chatRecords.length} 条聊天记录`);
       return chatRecords;
       
@@ -207,35 +221,147 @@ export class MessageArchiveService {
   }
 
   /**
-   * 分页获取所有聊天记录
+   * 分页获取所有群聊记录（过滤掉单聊消息）
    * @param startSeq 起始序号
    * @param batchSize 每批次大小
    */
   async getAllChatRecordsFromGoService(startSeq: number = 0, batchSize: number = 100): Promise<ChatRecord[]> {
-    const allRecords: ChatRecord[] = [];
+    const allGroupRecords: ChatRecord[] = [];
     let currentSeq = startSeq;
     
     try {
       while (true) {
-        const records = await this.getChatRecordsFromGoService(currentSeq, batchSize);
+        // 🎯 默认启用群消息过滤
+        const groupRecords = await this.getChatRecordsFromGoService(currentSeq, batchSize, 3, true);
         
-        if (records.length === 0) {
-          break; // 没有更多数据
+        if (groupRecords.length === 0) {
+          break; // 没有更多群消息数据
         }
         
-        allRecords.push(...records);
-        console.log(`已获取 ${allRecords.length} 条记录`);
+        allGroupRecords.push(...groupRecords);
+        console.log(`📊 已获取群消息: ${allGroupRecords.length} 条`);
         
-        // 更新seq为最后一条记录的seq + 1
-        currentSeq += records.length;
+        // 更新seq（注意：这里需要根据实际获取的记录数更新，而不是过滤后的数量）
+        // 为了安全起见，我们按批次大小递增
+        currentSeq += batchSize;
         
         // 避免请求过于频繁
         await new Promise(resolve => setTimeout(resolve, 100));
       }
       
-      return allRecords;
+      console.log(`🎯 群消息获取完成: 共 ${allGroupRecords.length} 条群消息`);
+      return allGroupRecords;
     } catch (error) {
-      console.error('批量获取聊天记录失败:', error);
+      console.error('批量获取群聊记录失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取指定群的聊天记录
+   * @param roomId 群ID
+   * @param startSeq 起始序号
+   * @param batchSize 每批次大小
+   */
+  async getGroupChatRecords(roomId: string, startSeq: number = 0, batchSize: number = 100): Promise<ChatRecord[]> {
+    try {
+      console.log(`🎯 开始获取群 ${roomId} 的聊天记录`);
+      
+      const allRecords = await this.getAllChatRecordsFromGoService(startSeq, batchSize);
+      
+      // 过滤出指定群的消息
+      const groupMessages = allRecords.filter(record => record.roomid === roomId);
+      
+      console.log(`✅ 群 ${roomId} 共有 ${groupMessages.length} 条消息`);
+      return groupMessages;
+    } catch (error) {
+      console.error(`获取群 ${roomId} 聊天记录失败:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取群消息统计信息
+   * @param startSeq 起始序号
+   * @param batchSize 每批次大小
+   */
+  async getGroupMessageStats(startSeq: number = 0, batchSize: number = 100): Promise<any> {
+    try {
+      console.log('📊 开始统计群消息数据...');
+      
+      const allGroupRecords = await this.getAllChatRecordsFromGoService(startSeq, batchSize);
+      
+      // 按群ID分组统计
+      const groupStats: { [roomId: string]: any } = {};
+      const messageTypeStats: { [type: string]: number } = {};
+      const senderStats: { [sender: string]: number } = {};
+      
+      for (const record of allGroupRecords) {
+        const roomId = record.roomid || 'unknown';
+        
+        // 群消息统计
+        if (!groupStats[roomId]) {
+          groupStats[roomId] = {
+            roomId,
+            messageCount: 0,
+            messageTypes: {},
+            senders: new Set(),
+            latestMessage: null,
+            earliestMessage: null
+          };
+        }
+        
+        groupStats[roomId].messageCount++;
+        groupStats[roomId].senders.add(record.from);
+        
+        // 消息类型统计
+        const msgType = record.msgtype || 'unknown';
+        groupStats[roomId].messageTypes[msgType] = (groupStats[roomId].messageTypes[msgType] || 0) + 1;
+        messageTypeStats[msgType] = (messageTypeStats[msgType] || 0) + 1;
+        
+        // 发送者统计
+        senderStats[record.from] = (senderStats[record.from] || 0) + 1;
+        
+        // 更新最新和最早消息时间
+        if (!groupStats[roomId].latestMessage || record.msgtime > groupStats[roomId].latestMessage.msgtime) {
+          groupStats[roomId].latestMessage = record;
+        }
+        if (!groupStats[roomId].earliestMessage || record.msgtime < groupStats[roomId].earliestMessage.msgtime) {
+          groupStats[roomId].earliestMessage = record;
+        }
+      }
+      
+      // 转换Set为数量
+      Object.keys(groupStats).forEach(roomId => {
+        groupStats[roomId].senderCount = groupStats[roomId].senders.size;
+        delete groupStats[roomId].senders;
+      });
+      
+      const stats = {
+        totalGroupMessages: allGroupRecords.length,
+        totalGroups: Object.keys(groupStats).length,
+        groupStats,
+        messageTypeStats,
+        topSenders: Object.entries(senderStats)
+          .sort(([,a], [,b]) => (b as number) - (a as number))
+          .slice(0, 10),
+        summary: {
+          mostActiveGroup: Object.entries(groupStats)
+            .sort(([,a], [,b]) => (b as any).messageCount - (a as any).messageCount)[0],
+          mostCommonMessageType: Object.entries(messageTypeStats)
+            .sort(([,a], [,b]) => (b as number) - (a as number))[0]
+        }
+      };
+      
+      console.log('📈 群消息统计完成:');
+      console.log(`- 总群消息数: ${stats.totalGroupMessages}`);
+      console.log(`- 涉及群数: ${stats.totalGroups}`);
+      console.log(`- 最活跃群: ${stats.summary.mostActiveGroup?.[1]?.messageCount || 0} 条消息`);
+      console.log(`- 最常见消息类型: ${stats.summary.mostCommonMessageType?.[0] || 'unknown'} (${stats.summary.mostCommonMessageType?.[1] || 0} 条)`);
+      
+      return stats;
+    } catch (error) {
+      console.error('获取群消息统计失败:', error);
       throw error;
     }
   }
@@ -377,15 +503,139 @@ export class MessageArchiveService {
   }
 
   /**
-   * 处理单条会话记录
+   * 提取时间戳，尝试多种可能的字段名
+   */
+  private extractTimestamp(message: any, goRecord: any): number {
+    // 尝试从消息中提取时间戳
+    const possibleFields = [
+      'msgtime', 'time', 'timestamp', 'CreateTime', 'create_time',
+      'sendTime', 'send_time', 'messageTime', 'message_time'
+    ];
+    
+    for (const field of possibleFields) {
+      if (message[field]) {
+        const timestamp = parseInt(message[field]);
+        if (!isNaN(timestamp) && timestamp > 0) {
+          return timestamp;
+        }
+      }
+    }
+    
+    // 尝试从goRecord中提取时间戳
+    for (const field of possibleFields) {
+      if (goRecord[field]) {
+        const timestamp = parseInt(goRecord[field]);
+        if (!isNaN(timestamp) && timestamp > 0) {
+          return timestamp;
+        }
+      }
+    }
+    
+    // 特殊处理：尝试从msgid中提取时间戳（针对external消息）
+    if (goRecord.msgid && goRecord.msgid.includes('_')) {
+      const parts = goRecord.msgid.split('_');
+      if (parts.length >= 2) {
+        const possibleTimestamp = parseInt(parts[1]);
+        if (!isNaN(possibleTimestamp) && possibleTimestamp > 0) {
+          // 检查是否是合理的时间戳格式
+          const timestampStr = possibleTimestamp.toString();
+          
+          // 如果是13位，可能是毫秒时间戳
+          if (timestampStr.length === 13) {
+            const date = new Date(possibleTimestamp);
+            // 检查是否是合理的日期（2000年-2030年）
+            if (date.getFullYear() >= 2000 && date.getFullYear() <= 2030) {
+              console.log(`从msgid提取到毫秒时间戳: ${possibleTimestamp}`);
+              return Math.floor(possibleTimestamp / 1000); // 转换为秒
+            }
+          }
+          
+          // 如果是10位，可能是秒时间戳
+          if (timestampStr.length === 10) {
+            const date = new Date(possibleTimestamp * 1000);
+            if (date.getFullYear() >= 2000 && date.getFullYear() <= 2030) {
+              console.log(`从msgid提取到秒时间戳: ${possibleTimestamp}`);
+              return possibleTimestamp;
+            }
+          }
+        }
+      }
+    }
+    
+    // 如果都没有找到，返回当前时间
+    console.warn(`无法提取时间戳，使用当前时间 (msgid: ${goRecord.msgid})`);
+    return Math.floor(Date.now() / 1000); // 返回秒级时间戳
+  }
+
+  /**
+   * 格式化消息时间戳
+   */
+  private formatMessageTime(msgtime: number): string {
+    try {
+      if (!msgtime || msgtime === 0) {
+        return '时间未知';
+      }
+
+      // 处理不同的时间戳格式
+      let timestamp = msgtime;
+      
+      // 如果是13位时间戳（毫秒），直接使用
+      if (timestamp.toString().length === 13) {
+        return new Date(timestamp).toLocaleString('zh-CN');
+      }
+      
+      // 如果是10位时间戳（秒），转换为毫秒
+      if (timestamp.toString().length === 10) {
+        return new Date(timestamp * 1000).toLocaleString('zh-CN');
+      }
+      
+      // 如果是16位或17位时间戳（微秒），转换为毫秒
+      if (timestamp.toString().length >= 16) {
+        return new Date(Math.floor(timestamp / 1000)).toLocaleString('zh-CN');
+      }
+      
+      // 如果时间戳看起来不合理（比如太大或太小），尝试不同的处理方式
+      const now = Date.now();
+      const timestampMs = timestamp * 1000;
+      
+      // 检查转换后的时间是否合理（在1970年到2100年之间）
+      if (timestampMs > 0 && timestampMs < 4102444800000) { // 2100年的时间戳
+        return new Date(timestampMs).toLocaleString('zh-CN');
+      }
+      
+      // 如果都不合理，返回原始值和当前时间
+      return `时间戳异常: ${msgtime} (${new Date().toLocaleString('zh-CN')})`;
+      
+    } catch (error) {
+      console.error('时间格式化失败:', error);
+      return `时间格式错误: ${msgtime}`;
+    }
+  }
+
+  /**
+   * 处理单条群聊记录（只处理群消息）
    */
   private async processChatRecord(record: ChatRecord): Promise<void> {
     try {
-      console.log(`处理会话记录: ${record.msgid}`);
+      // 🎯 只处理群消息，跳过单聊
+      if (!record.roomid || record.roomid.trim() === '') {
+        console.log(`🚫 跳过非群消息: ${record.msgid}`);
+        return;
+      }
+
+      console.log(`📱 处理群消息: ${record.msgid}`);
       console.log(`- 消息类型: ${record.msgtype}`);
       console.log(`- 发送者: ${record.from}`);
-      console.log(`- 群聊ID: ${record.roomid || '单聊'}`);
-      console.log(`- 消息时间: ${new Date(record.msgtime * 1000).toLocaleString()}`);
+      console.log(`- 群聊ID: ${record.roomid}`);
+      // 智能处理时间戳格式
+      const formattedTime = this.formatMessageTime(record.msgtime);
+      console.log(`- 消息时间: ${formattedTime}`);
+      
+      // 如果所有关键字段都是空的，输出完整的记录内容用于调试
+      if (!record.msgtype && !record.from && record.msgtime === 0) {
+        console.log('⚠️  检测到空消息记录，完整内容:');
+        console.log(JSON.stringify(record, null, 2));
+      }
       
       // 根据消息类型处理
       switch (record.msgtype) {
@@ -400,6 +650,12 @@ export class MessageArchiveService {
           break;
         case 'video':
           await this.processVideoRecord(record);
+          break;
+        case '':
+        case null:
+        case undefined:
+          // 处理空消息类型（可能是系统消息或external消息）
+          await this.processSystemRecord(record);
           break;
         default:
           console.log(`未处理的消息类型: ${record.msgtype}`);
@@ -489,6 +745,38 @@ export class MessageArchiveService {
   }
 
   /**
+   * 处理系统消息记录（包括external类型消息）
+   */
+  private async processSystemRecord(record: ChatRecord): Promise<void> {
+    try {
+      console.log('🔧 处理系统/外部消息记录');
+      
+      // 检查是否是external类型消息
+      if (record.msgid && record.msgid.includes('_external')) {
+        console.log('📱 检测到external消息（外部联系人相关）');
+        console.log('可能的消息类型：');
+        console.log('- 外部联系人添加/删除通知');
+        console.log('- 外部群成员变更记录'); 
+        console.log('- 好友申请或验证消息');
+        console.log('- 外部联系人状态变更');
+      }
+      
+      // 输出可用的内容信息
+      if (record.content) {
+        console.log('消息内容:', JSON.stringify(record.content, null, 2));
+      } else {
+        console.log('无消息内容（系统级操作记录）');
+      }
+      
+      // TODO: 根据具体业务需求处理系统消息
+      // 例如：记录外部联系人变更、更新群成员状态等
+      
+    } catch (error) {
+      console.error('处理系统消息失败:', error);
+    }
+  }
+
+  /**
    * 处理视频消息记录
    */
   private async processVideoRecord(record: ChatRecord): Promise<void> {
@@ -537,14 +825,16 @@ export class MessageArchiveService {
           from: message.from || '',
           tolist: Array.isArray(message.tolist) ? message.tolist : [],
           roomid: message.roomid || '',
-          msgtime: message.msgtime || 0,
+          msgtime: this.extractTimestamp(message, goRecord),
           msgtype: message.msgtype || '',
           content: message
         };
         return chatRecord;
       } else {
         // 如果消息格式不标准，尝试从不同的可能字段中提取
-        console.log(`消息 ${goRecord.msgid} 格式不标准，尝试提取字段:`, JSON.stringify(message, null, 2));
+        console.log(`消息 ${goRecord.msgid} 格式不标准，尝试提取字段:`);
+        console.log('完整goRecord:', JSON.stringify(goRecord, null, 2));
+        console.log('message字段:', JSON.stringify(message, null, 2));
         
         // 构建一个基础的ChatRecord，使用可用的字段
         const chatRecord: ChatRecord = {
@@ -553,7 +843,7 @@ export class MessageArchiveService {
           from: message.from || message.FromUserName || '',
           tolist: message.tolist || (message.ToUserName ? [message.ToUserName] : []),
           roomid: message.roomid || message.ChatId || '',
-          msgtime: message.msgtime || message.CreateTime || 0,
+          msgtime: this.extractTimestamp(message, goRecord),
           msgtype: message.msgtype || message.MsgType || '',
           content: message
         };
